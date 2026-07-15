@@ -7,62 +7,89 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='1' x2='1' y2='0'%3E%3Cstop offset='0' stop-color='%234FD1C5'/%3E%3Cstop offset='1' stop-color='%239B8CF2'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='64' height='64' rx='14' fill='%2314161C'/%3E%3Crect x='12' y='38' width='9' height='16' rx='2' fill='url(%23g)'/%3E%3Crect x='27' y='28' width='9' height='26' rx='2' fill='url(%23g)'/%3E%3Crect x='42' y='14' width='9' height='40' rx='2' fill='url(%23g)'/%3E%3C/svg%3E">
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon-192.png">
-<meta name="theme-color" content="#14161C">
+<meta name="theme-color" content="#050a10">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="KPIペース">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Noto+Sans+JP:wght@400;500;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;600;700;800&family=Noto+Sans+JP:wght@400;500;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
 <style>
   :root{
-    --bg:#14161C; --surface:#1C1F27; --surface-2:#23262F; --line:#2C303B;
-    --text:#EDEEF2; --muted:#8B90A0;
-    --good:#4ADE80; --good-bg:rgba(74,222,128,.12);
+    --bg:#050a10; --surface:rgba(14,26,36,.72); --surface-2:rgba(20,38,50,.85); --line:rgba(56,189,248,.28);
+    --text:#E8FBFF; --muted:#5D8CA3;
+    --good:#4AFAC4; --good-bg:rgba(74,250,196,.12);
     --warn:#FBBF24; --warn-bg:rgba(251,191,36,.12);
-    --bad:#F87171; --bad-bg:rgba(248,113,113,.12);
+    --bad:#FF5D6C; --bad-bg:rgba(255,93,108,.12);
     --mono:'JetBrains Mono',ui-monospace,Menlo,monospace;
-    --display:'Rajdhani','Noto Sans JP',sans-serif;
+    --display:'Orbitron','Noto Sans JP',sans-serif;
     --sans:'Noto Sans JP',-apple-system,sans-serif;
-    --k0:#4FD1C5; --k1:#F2A65A; --k2:#F2617A; --k3:#9B8CF2; --k4:#63B3ED; --k5:#84E296;
-  }
-  body.theme-light{
-    --bg:#F7F8FA; --surface:#FFFFFF; --surface-2:#F1F2F6; --line:#E3E6F0;
-    --text:#14161C; --muted:#8A8F9E;
+    --glow:#38E8FF;
+    --k0:#38E8FF; --k1:#7DF9E0; --k2:#FF6FD8; --k3:#8C7CFF; --k4:#5CC8FF; --k5:#6BFFB0;
   }
   *{box-sizing:border-box;}
   body{
     margin:0; font-family:var(--sans); color:var(--text); padding:22px 16px 60px;
-    background: radial-gradient(ellipse at top, rgba(79,209,197,.06), transparent 55%), var(--bg);
-    transition:background .2s ease, color .2s ease;
+    background:
+      repeating-linear-gradient(0deg, rgba(56,232,255,.025) 0px, rgba(56,232,255,.025) 1px, transparent 1px, transparent 3px),
+      radial-gradient(ellipse at top, rgba(56,232,255,.09), transparent 55%),
+      radial-gradient(ellipse at bottom, rgba(140,124,255,.06), transparent 60%),
+      var(--bg);
+    min-height:100vh;
   }
-  body.theme-light{ background:var(--bg); }
-  .wrap{max-width:720px;margin:0 auto;}
+  .wrap{max-width:720px;margin:0 auto;position:relative;z-index:1;}
+
+  @keyframes hud-pulse{ 0%,100%{opacity:.55;} 50%{opacity:1;} }
+  @keyframes hud-spin{ from{transform:rotate(0deg);} to{transform:rotate(360deg);} }
+  @keyframes scan-sweep{ 0%{transform:translateY(-100%);} 100%{transform:translateY(100vh);} }
+
+  .scanline{position:fixed;left:0;right:0;height:120px;pointer-events:none;z-index:0;
+    background:linear-gradient(to bottom, transparent, rgba(56,232,255,.05), transparent);
+    animation:scan-sweep 7s linear infinite;}
+
+  .hud-corners{position:relative;}
+  .hud-corners::before, .hud-corners::after{
+    content:'';position:absolute;width:14px;height:14px;pointer-events:none;
+    border-color:var(--glow);opacity:.85;transition:opacity .15s ease;
+  }
+  .hud-corners::before{top:-1px;left:-1px;border-top:2px solid;border-left:2px solid;border-top-left-radius:6px;}
+  .hud-corners::after{bottom:-1px;right:-1px;border-bottom:2px solid;border-right:2px solid;border-bottom-right-radius:6px;}
+  .hud-corners:hover::before, .hud-corners:hover::after{opacity:1;filter:drop-shadow(0 0 4px var(--glow));}
 
   .topbar{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--line);}
-  .brand{display:flex;align-items:center;gap:10px;}
-  .brand-mark{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg, var(--k0), var(--k3));display:flex;align-items:end;justify-content:center;gap:3px;padding:6px 7px;}
-  .brand-mark i{display:block;width:5px;background:rgba(20,22,28,.85);border-radius:1px;}
-  .brand-mark i:nth-child(1){height:8px;} .brand-mark i:nth-child(2){height:14px;} .brand-mark i:nth-child(3){height:20px;}
-  .brand h1{font-family:var(--display);font-size:20px;font-weight:700;margin:0;letter-spacing:.03em;}
-  .brand .sub{font-size:11.5px;color:var(--muted);font-family:var(--mono);margin-top:1px;}
-  .theme-light .brand h1{font-family:var(--sans);letter-spacing:0;}
-  .theme-light .brand .sub{font-family:var(--sans);}
+  .brand{display:flex;align-items:center;gap:12px;}
+  .brand-mark{
+    width:38px;height:38px;border-radius:50%;position:relative;flex-shrink:0;
+    background:radial-gradient(circle at center, rgba(56,232,255,.25), rgba(5,10,16,.9) 70%);
+    border:1.5px solid var(--glow);
+    box-shadow:0 0 10px rgba(56,232,255,.55), inset 0 0 8px rgba(56,232,255,.4);
+  }
+  .brand-mark::before{
+    content:'';position:absolute;inset:8px;border-radius:50%;border:1px solid rgba(56,232,255,.6);
+    animation:hud-spin 6s linear infinite;
+  }
+  .brand-mark::after{
+    content:'';position:absolute;inset:15px;border-radius:50%;background:var(--glow);
+    box-shadow:0 0 8px 2px var(--glow);animation:hud-pulse 2.2s ease-in-out infinite;
+  }
+  .brand-mark i{display:none;}
+  .brand h1{font-family:var(--display);font-size:18px;font-weight:700;margin:0;letter-spacing:.06em;text-shadow:0 0 12px rgba(56,232,255,.4);}
+  .brand .sub{font-size:11px;color:var(--muted);font-family:var(--mono);margin-top:2px;letter-spacing:.03em;}
   .back-btn{font-size:18px;color:var(--muted);margin-right:2px;padding:4px 6px 4px 0;background:none;border:none;cursor:pointer;}
-  .back-btn:hover{color:var(--text);}
+  .back-btn:hover{color:var(--glow);text-shadow:0 0 8px var(--glow);}
   .topbar-btns{display:flex;gap:8px;}
-  .btn{border:none;border-radius:9px;padding:9px 15px;font-size:13px;font-weight:600;font-family:var(--sans);cursor:pointer;white-space:nowrap;}
-  .btn-fill{background:linear-gradient(135deg, var(--k0), var(--k3));color:#0E1015;}
-  .btn-fill:hover{filter:brightness(1.08);}
-  .theme-light .btn-fill{background:#14161C;color:#fff;border-radius:10px;}
-  .btn-ghost{background:var(--surface);color:var(--text);border:1px solid var(--line);}
-  .btn-ghost:hover{background:var(--surface-2);}
+  .btn{border:none;border-radius:6px;padding:9px 15px;font-size:12.5px;font-weight:600;font-family:var(--mono);cursor:pointer;white-space:nowrap;letter-spacing:.03em;}
+  .btn-fill{background:linear-gradient(135deg, var(--k0), var(--k3));color:#031014;box-shadow:0 0 14px rgba(56,232,255,.45);}
+  .btn-fill:hover{filter:brightness(1.15);box-shadow:0 0 20px rgba(56,232,255,.7);}
+  .btn-ghost{background:var(--surface-2);color:var(--text);border:1px solid var(--line);}
+  .btn-ghost:hover{border-color:var(--glow);color:var(--glow);}
 
   /* Clarity-style tab nav (icon over label, underline on active) */
   .clarity-tabs{display:flex;justify-content:space-around;border-bottom:1px solid var(--line);margin-bottom:20px;}
-  .clarity-tab{flex:1;text-align:center;padding:10px 4px 12px;background:none;border:none;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px;}
-  .clarity-tab .ic{font-size:19px;display:block;margin-bottom:4px;}
-  .clarity-tab .lb{font-size:12px;font-weight:600;}
-  .clarity-tab.active{color:var(--text);border-bottom-color:var(--text);}
+  .clarity-tab{flex:1;text-align:center;padding:10px 4px 12px;background:none;border:none;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px;font-family:var(--mono);}
+  .clarity-tab .ic{font-size:19px;display:block;margin-bottom:4px;filter:grayscale(1) brightness(1.4);}
+  .clarity-tab .lb{font-size:11px;font-weight:600;letter-spacing:.02em;}
+  .clarity-tab.active{color:var(--glow);border-bottom-color:var(--glow);text-shadow:0 0 8px rgba(56,232,255,.6);}
+  .clarity-tab.active .ic{filter:none;}
 
   .empty{text-align:center;padding:70px 20px;color:var(--muted);font-size:14px;}
   .empty-small{text-align:center;padding:30px 10px;color:var(--muted);font-size:13px;}
@@ -116,8 +143,7 @@
 
   .list-item{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;gap:10px;}
   .check{width:20px;height:20px;border-radius:6px;border:1.5px solid var(--line);flex-shrink:0;cursor:pointer;display:flex;align-items:center;justify-content:center;background:var(--surface-2);font-size:12px;}
-  .check.done{background:var(--good);border-color:var(--good);color:#0E1015;}
-  .theme-light .check.done{background:#14161C;border-color:#14161C;color:#fff;}
+  .check.done{background:var(--good);border-color:var(--good);color:#031014;box-shadow:0 0 8px rgba(74,250,196,.5);}
   .item-text{flex:1;font-size:14px;min-width:0;word-break:break-word;}
   .item-text.done{color:var(--muted);text-decoration:line-through;}
   .del-btn{background:none;border:none;cursor:pointer;color:var(--muted);font-size:13px;flex-shrink:0;}
@@ -140,7 +166,6 @@
   .reflect-save-row .btn{width:100%;padding:13px;font-size:14px;}
   .reflect-entry{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:8px;}
   .reflect-date{font-size:11px;color:var(--k3);font-family:var(--mono);font-weight:700;margin-bottom:6px;}
-  .theme-light .reflect-date{color:var(--muted);}
   .reflect-content{font-size:13px;line-height:1.6;color:var(--muted);white-space:pre-wrap;word-break:break-word;margin-bottom:4px;}
   .reflect-content b{color:var(--text);}
 
@@ -178,6 +203,7 @@
 </style>
 </head>
 <body>
+<div class="scanline"></div>
 <div class="wrap" id="app"></div>
 
 <script type="module">
@@ -193,7 +219,7 @@ const REFLECT_QUESTIONS = [
   '明日やることは?',
   '今日の自分に一言。'
 ];
-const PALETTE = ['#4FD1C5','#F2A65A','#F2617A','#9B8CF2','#63B3ED','#84E296'];
+const PALETTE = ['#38E8FF','#8C7CFF','#7DF9E0','#5CC8FF','#6BFFB0','#FF6FD8'];
 
 let session = null;
 let currentView = 'login'; // login | hub | kpi | clarity
@@ -267,7 +293,6 @@ async function loadAllData(){
 
 /* ---------------- Render root ---------------- */
 function render(){
-  document.body.classList.toggle('theme-light', currentView==='clarity');
   const app = document.getElementById('app');
 
   if(currentView==='login'){ app.innerHTML = renderLogin(); attachLoginEvents(); return; }
@@ -348,25 +373,25 @@ function renderHub(){
   const openTasks = tasks.filter(t=>!t.done).length;
   return `
     <div class="hub-grid">
-      <div class="hub-tile" onclick="app_openApp('kpi')">
+      <div class="hub-tile hud-corners" onclick="app_openApp('kpi')">
         <div class="hub-tile-icon" style="background:linear-gradient(135deg, var(--k0), var(--k4));">📊</div>
         <div class="hub-tile-title">KPIペース</div>
         <div class="hub-tile-desc">月間目標の進捗と日当たり必要件数を管理</div>
         <div class="hub-tile-meta">${kpiCount>0 ? `${kpiCount}件のKPIを追跡中` : '未設定'}</div>
       </div>
-      <div class="hub-tile" onclick="app_openApp('clarity','tasks')">
+      <div class="hub-tile hud-corners" onclick="app_openApp('clarity','tasks')">
         <div class="hub-tile-icon" style="background:linear-gradient(135deg, var(--k3), var(--k2));">🧠</div>
         <div class="hub-tile-title">Clarity</div>
         <div class="hub-tile-desc">Tasks / Memos / Reflection で頭の中を整理</div>
         <div class="hub-tile-meta">${openTasks>0 ? `未完了タスク ${openTasks}件` : 'タスクなし'}</div>
       </div>
-      <div class="hub-tile" onclick="app_openApp('minutes')">
+      <div class="hub-tile hud-corners" onclick="app_openApp('minutes')">
         <div class="hub-tile-icon" style="background:linear-gradient(135deg, var(--k1), var(--k5));">📝</div>
         <div class="hub-tile-title">議事録</div>
         <div class="hub-tile-desc">文字起こしと過去の共有文からAIが議事録を作成</div>
         <div class="hub-tile-meta">${minutesList.length>0 ? `${minutesList.length}件を保存済み` : '未作成'}</div>
       </div>
-      <div class="hub-tile" onclick="app_openApp('education')">
+      <div class="hub-tile hud-corners" onclick="app_openApp('education')">
         <div class="hub-tile-icon" style="background:linear-gradient(135deg, var(--k4), var(--k0));">🎓</div>
         <div class="hub-tile-title">教育の共有</div>
         <div class="hub-tile-desc">教育台本と文字起こしからスタッフ教育の共有文を作成</div>
@@ -426,7 +451,7 @@ function renderKpiTab(info){
     const tEntry = todayEntry(kpi.id);
     const tCount = tEntry ? tEntry.count : 0;
     out += `
-    <div class="card">
+    <div class="card hud-corners">
       <div class="gauge-wrap">${buildGauge(pct, expectedPct, color, accent)}
         <div class="gauge-center"><div class="gauge-num" style="color:${color};">${pct}%</div><div class="gauge-target">${achieved}/${kpi.target}</div></div></div>
       <div class="card-body">
@@ -474,7 +499,7 @@ function openKpiModal(kpiId){
   const existing = kpiId ? kpis.find(k=>k.id===kpiId) : null;
   const overlay = document.createElement('div'); overlay.className='overlay'; overlay.id='overlay';
   overlay.innerHTML = `
-    <div class="modal">
+    <div class="modal hud-corners">
       <h2>${existing?'KPIを編集':'KPIを追加'}</h2>
       <div class="field"><label>KPI名</label><input id="f-name" type="text" placeholder="例: MNP" value="${existing?escapeHtml(existing.name):''}"></div>
       <div class="field"><label>月間目標件数</label><input id="f-target" type="number" min="0" placeholder="例: 30" value="${existing?existing.target:''}"></div>
@@ -530,7 +555,7 @@ function openMemoModal(){
   const text = generateMemoText();
   const overlay = document.createElement('div'); overlay.className='overlay'; overlay.id='overlay';
   overlay.innerHTML = `
-    <div class="modal" style="max-width:420px;">
+    <div class="modal hud-corners" style="max-width:420px;">
       <h2>メモ出力</h2>
       <textarea id="memo-text" class="memo-textarea" readonly>${escapeHtml(text)}</textarea>
       <div class="copy-msg" id="copy-msg"></div>
