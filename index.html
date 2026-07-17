@@ -234,6 +234,8 @@ let memos = [];
 let reflections = [];
 let minutesList = [];
 let educationList = [];
+let educationSchedule = [];
+let educationSubTab = 'log'; // log | summary | schedule
 
 function todayISO(){ return new Date().toISOString().slice(0,10); }
 function nowISO(){ return new Date().toISOString(); }
@@ -273,7 +275,7 @@ async function doLogout(){
 /* ---------------- Data loading ---------------- */
 async function loadAllData(){
   const uid = session.user.id;
-  const [k, ke, t, m, r, mm, es] = await Promise.all([
+  const [k, ke, t, m, r, mm, es, esc] = await Promise.all([
     supabase.from('kpis').select('*').eq('user_id', uid).order('created_at'),
     supabase.from('kpi_entries').select('*').eq('user_id', uid),
     supabase.from('tasks').select('*').eq('user_id', uid).eq('date', todayISO()).order('created_at'),
@@ -281,6 +283,7 @@ async function loadAllData(){
     supabase.from('reflections').select('*').eq('user_id', uid).order('date', {ascending:false}),
     supabase.from('meeting_minutes').select('*').eq('user_id', uid).order('created_at', {ascending:false}),
     supabase.from('education_shares').select('*').eq('user_id', uid).order('created_at', {ascending:false}),
+    supabase.from('education_schedule').select('*').eq('user_id', uid).order('date', {ascending:true}),
   ]);
   kpis = k.data || [];
   kpiEntries = ke.data || [];
@@ -289,6 +292,7 @@ async function loadAllData(){
   reflections = r.data || [];
   minutesList = mm.data || [];
   educationList = es.data || [];
+  educationSchedule = esc.data || [];
 }
 
 /* ---------------- Render root ---------------- */
@@ -862,6 +866,91 @@ ${transcript && transcript.trim() ? transcript : '(なし)'}`;
 }
 
 function renderEducationTab(){
+  let out = `
+    <div class="clarity-tabs" style="margin-bottom:16px;">
+      <button class="clarity-tab ${educationSubTab==='log'?'active':''}" onclick="app_switchEducationSubTab('log')"><span class="lb">記録</span></button>
+      <button class="clarity-tab ${educationSubTab==='summary'?'active':''}" onclick="app_switchEducationSubTab('summary')"><span class="lb">対象者別</span></button>
+      <button class="clarity-tab ${educationSubTab==='schedule'?'active':''}" onclick="app_switchEducationSubTab('schedule')"><span class="lb">スケジュール</span></button>
+    </div>
+  `;
+  if(educationSubTab==='summary') out += renderEducationSummaryTab();
+  else if(educationSubTab==='schedule') out += renderEducationScheduleTab();
+  else out += renderEducationLogTab();
+  return out;
+}
+function switchEducationSubTab(t){ educationSubTab = t; render(); }
+
+function renderEducationSummaryTab(){
+  if(educationList.length===0){
+    return `<div class="empty-small">まだ教育記録がありません。「記録」タブから作成してください。</div>`;
+  }
+  const groups = {};
+  educationList.forEach(e=>{
+    const key = e.trainee || '(対象未設定)';
+    if(!groups[key]) groups[key] = [];
+    groups[key].push(e);
+  });
+  let out = '';
+  Object.keys(groups).sort().forEach(trainee=>{
+    const items = groups[trainee].sort((a,b)=> (b.date||'').localeCompare(a.date||''));
+    out += `<div class="card hud-corners" style="grid-template-columns:1fr;padding:16px 18px;">
+      <div class="card-body">
+        <div class="card-head"><div class="card-title" style="color:var(--k0);">${escapeHtml(trainee)}</div>
+          <span class="status-pill status-good">${items.length}件</span></div>`;
+    items.forEach(e=>{
+      out += `<div class="reflect-entry" style="background:var(--surface-2);">
+        <div class="reflect-date">${e.date||''}</div>
+        <div class="reflect-content">${escapeHtml(e.content).slice(0,140)}${e.content.length>140?'…':''}</div>
+        <div style="display:flex;gap:8px;margin-top:8px;">
+          <button class="del-btn" onclick="app_loadEducation('${e.id}')" style="color:var(--k0);">開く</button>
+        </div>
+      </div>`;
+    });
+    out += `</div></div>`;
+  });
+  return out;
+}
+
+function renderEducationScheduleTab(){
+  let out = `
+    <div class="input-row">
+      <input type="date" id="sched-date" style="flex:0 0 150px;padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--text);font-family:var(--sans);">
+      <input type="text" id="sched-trainee" placeholder="対象者">
+      <input type="text" id="sched-theme" placeholder="テーマ">
+      <button class="btn btn-fill" onclick="app_addSchedule()">追加</button>
+    </div>
+  `;
+  if(educationSchedule.length===0){
+    out += `<div class="empty-small">予定はまだありません。</div>`;
+  } else {
+    const sorted = [...educationSchedule].sort((a,b)=> (a.date||'').localeCompare(b.date||''));
+    sorted.forEach(s=>{
+      out += `<div class="list-item">
+        <div style="flex:1;min-width:0;">
+          <div style="font-family:var(--mono);font-size:12px;color:var(--k0);margin-bottom:2px;">${s.date||''}</div>
+          <div class="item-text">${escapeHtml(s.trainee||'')} ・ ${escapeHtml(s.theme||'')}</div>
+        </div>
+        <button class="del-btn" onclick="app_deleteSchedule('${s.id}')">✕</button>
+      </div>`;
+    });
+  }
+  return out;
+}
+async function addSchedule(){
+  const date = document.getElementById('sched-date').value;
+  const trainee = document.getElementById('sched-trainee').value.trim();
+  const theme = document.getElementById('sched-theme').value.trim();
+  if(!date || !trainee){ alert('日付と対象者を入力してください'); return; }
+  const uid = session.user.id;
+  const { data, error } = await supabase.from('education_schedule').insert({user_id:uid, date, trainee, theme}).select().single();
+  if(!error){ educationSchedule.push(data); render(); }
+}
+async function deleteSchedule(id){
+  await supabase.from('education_schedule').delete().eq('id', id);
+  educationSchedule = educationSchedule.filter(s=>s.id!==id); render();
+}
+
+function renderEducationLogTab(){
   const today = todayISO();
   let out = `
     <div class="metrics-row" style="margin-bottom:14px;">
@@ -1011,6 +1100,9 @@ window.app_copyEducationPrompt = copyEducationPrompt;
 window.app_saveEducation = saveEducation;
 window.app_loadEducation = loadEducation;
 window.app_deleteEducation = deleteEducation;
+window.app_switchEducationSubTab = switchEducationSubTab;
+window.app_addSchedule = addSchedule;
+window.app_deleteSchedule = deleteSchedule;
 
 init();
 
