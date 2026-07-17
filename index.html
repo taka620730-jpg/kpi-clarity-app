@@ -36,7 +36,46 @@
       var(--bg);
     min-height:100vh;
   }
-  .wrap{max-width:720px;margin:0 auto;position:relative;z-index:1;}
+  .wrap{max-width:960px;margin:0 auto;position:relative;z-index:1;}
+
+  .app-shell{display:flex;gap:22px;align-items:flex-start;}
+  .sidebar{
+    width:92px;flex-shrink:0;display:flex;flex-direction:column;gap:8px;
+    position:sticky;top:22px;
+  }
+  .sidebar-item{
+    display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 6px;
+    border-radius:14px;cursor:pointer;color:var(--muted);border:1px solid transparent;
+    background:transparent;transition:all .15s ease;
+  }
+  .sidebar-item .ic{font-size:20px;line-height:1;}
+  .sidebar-item .lb{font-size:10px;font-weight:600;text-align:center;line-height:1.2;}
+  .sidebar-item:hover{color:var(--text);background:var(--surface-2);}
+  .sidebar-item.active{
+    color:var(--text);border-color:var(--glow);background:var(--surface);
+    box-shadow:0 0 14px rgba(56,232,255,.15), inset 0 0 8px rgba(56,232,255,.08);
+  }
+  .main-area{flex:1;min-width:0;}
+  @media (max-width:680px){
+    .app-shell{flex-direction:column;}
+    .sidebar{
+      width:100%;flex-direction:row;overflow-x:auto;position:static;
+      padding-bottom:4px;
+    }
+    .sidebar-item{flex:0 0 auto;min-width:64px;}
+  }
+
+  .dash-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+  @media (max-width:640px){.dash-grid{grid-template-columns:1fr;}}
+  .dash-widget{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px 18px;}
+  .dash-widget-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;}
+  .dash-widget-title{font-family:var(--display);font-size:15px;font-weight:700;color:var(--k0);}
+  .dash-mini-row{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--line);font-size:12.5px;}
+  .dash-mini-row:last-child{border-bottom:none;}
+  .dash-mini-name{color:var(--text);}
+  .dash-mini-val{font-family:var(--mono);color:var(--muted);font-size:11.5px;}
+  .dash-bar-track{height:5px;background:var(--surface-2);border-radius:4px;overflow:hidden;margin-top:4px;}
+  .dash-bar-fill{height:100%;border-radius:4px;}
 
   @keyframes hud-pulse{ 0%,100%{opacity:.55;} 50%{opacity:1;} }
   @keyframes hud-spin{ from{transform:rotate(0deg);} to{transform:rotate(360deg);} }
@@ -310,7 +349,6 @@ function render(){
   let html = `
     <div class="topbar">
       <div class="brand">
-        ${currentView!=='hub' ? `<button class="back-btn" onclick="app_goHub()" title="ホームへ">←</button>` : ''}
         <div class="brand-mark"><i></i><i></i><i></i></div>
         <div><h1>${headerTitle}</h1><div class="sub">${escapeHtml(headerSub)}</div></div>
       </div>
@@ -319,8 +357,11 @@ function render(){
         <button class="btn btn-ghost" onclick="app_openMemoModal()">📋 メモ出力</button>
         <button class="btn btn-fill" onclick="app_openKpiModal()">＋ KPI追加</button>
       </div>` : ''}
-      ${currentView==='hub' ? `<button class="btn btn-ghost" onclick="app_logout()">ログアウト</button>` : ''}
+      <button class="btn btn-ghost" onclick="app_logout()">ログアウト</button>
     </div>
+    <div class="app-shell">
+      <div class="sidebar">${renderSidebar()}</div>
+      <div class="main-area">
   `;
 
   if(currentView==='clarity'){
@@ -338,11 +379,11 @@ function render(){
     </div>`;
   }
 
-  html += `<div id="tab-content"></div>`;
+  html += `<div id="tab-content"></div></div></div>`;
   app.innerHTML = html;
 
   const content = document.getElementById('tab-content');
-  if(currentView==='hub') content.innerHTML = renderHub();
+  if(currentView==='hub') content.innerHTML = renderDashboard();
   else if(currentView==='kpi') content.innerHTML = renderKpiTab(info);
   else if(currentView==='minutes') content.innerHTML = renderMinutesTab();
   else if(currentView==='education') content.innerHTML = renderEducationTab();
@@ -352,6 +393,22 @@ function render(){
     else if(clarityTab==='reflection') content.innerHTML = renderReflectionTab();
     else if(clarityTab==='settings') content.innerHTML = renderSettingsTab();
   }
+}
+
+function renderSidebar(){
+  const items = [
+    {view:'hub', tab:null, icon:'🏠', label:'ホーム'},
+    {view:'kpi', tab:null, icon:'📊', label:'KPIペース'},
+    {view:'clarity', tab:'tasks', icon:'🧠', label:'Clarity'},
+    {view:'minutes', tab:null, icon:'📝', label:'議事録'},
+    {view:'education', tab:null, icon:'🎓', label:'教育'},
+  ];
+  return items.map(it=>{
+    const active = currentView===it.view;
+    return `<div class="sidebar-item ${active?'active':''}" onclick="app_openApp('${it.view}'${it.tab?`,'${it.tab}'`:''})">
+      <span class="ic">${it.icon}</span><span class="lb">${it.label}</span>
+    </div>`;
+  }).join('');
 }
 
 function renderLogin(){
@@ -372,39 +429,103 @@ function attachLoginEvents(){
   if(pw) pw.addEventListener('keydown', (e)=>{ if(e.key==='Enter') doLogin(); });
 }
 
-function renderHub(){
-  const kpiCount = kpis.length;
-  const openTasks = tasks.filter(t=>!t.done).length;
-  return `
-    <div class="hub-grid">
-      <div class="hub-tile hud-corners" onclick="app_openApp('kpi')">
-        <div class="hub-tile-icon" style="background:linear-gradient(135deg, var(--k0), var(--k4));">📊</div>
-        <div class="hub-tile-title">KPIペース</div>
-        <div class="hub-tile-desc">月間目標の進捗と日当たり必要件数を管理</div>
-        <div class="hub-tile-meta">${kpiCount>0 ? `${kpiCount}件のKPIを追跡中` : '未設定'}</div>
-      </div>
-      <div class="hub-tile hud-corners" onclick="app_openApp('clarity','tasks')">
-        <div class="hub-tile-icon" style="background:linear-gradient(135deg, var(--k3), var(--k2));">🧠</div>
-        <div class="hub-tile-title">Clarity</div>
-        <div class="hub-tile-desc">Tasks / Memos / Reflection で頭の中を整理</div>
-        <div class="hub-tile-meta">${openTasks>0 ? `未完了タスク ${openTasks}件` : 'タスクなし'}</div>
-      </div>
-      <div class="hub-tile hud-corners" onclick="app_openApp('minutes')">
-        <div class="hub-tile-icon" style="background:linear-gradient(135deg, var(--k1), var(--k5));">📝</div>
-        <div class="hub-tile-title">議事録</div>
-        <div class="hub-tile-desc">文字起こしと過去の共有文からAIが議事録を作成</div>
-        <div class="hub-tile-meta">${minutesList.length>0 ? `${minutesList.length}件を保存済み` : '未作成'}</div>
-      </div>
-      <div class="hub-tile hud-corners" onclick="app_openApp('education')">
-        <div class="hub-tile-icon" style="background:linear-gradient(135deg, var(--k4), var(--k0));">🎓</div>
-        <div class="hub-tile-title">教育の共有</div>
-        <div class="hub-tile-desc">教育台本と文字起こしからスタッフ教育の共有文を作成</div>
-        <div class="hub-tile-meta">${educationList.length>0 ? `${educationList.length}件を保存済み` : '未作成'}</div>
-      </div>
-    </div>
-    <div class="footnote">${session.user.email}</div>
-  `;
+function renderDashboard(){
+  const info = monthInfo();
+  let out = `<div class="dash-grid">`;
+  out += renderKpiWidget(info);
+  out += renderClarityTasksWidget();
+  out += renderMinutesWidget();
+  out += renderEducationWidget();
+  out += `</div>`;
+  out += `<div class="footnote">${session.user.email}</div>`;
+  return out;
 }
+
+function renderKpiWidget(info){
+  let rows = '';
+  if(kpis.length===0){
+    rows = `<div class="empty-small" style="padding:14px 0;">KPI未登録</div>`;
+  } else {
+    kpis.slice(0,5).forEach((kpi, idx)=>{
+      const accent = PALETTE[idx % PALETTE.length];
+      const achieved = achievedFor(kpi.id);
+      const pct = Math.min(100, Math.round((achieved/(kpi.target||1))*100));
+      rows += `<div class="dash-mini-row" style="flex-direction:column;align-items:stretch;">
+        <div style="display:flex;justify-content:space-between;">
+          <span class="dash-mini-name">${escapeHtml(kpi.name)}</span>
+          <span class="dash-mini-val">${achieved}/${kpi.target}</span>
+        </div>
+        <div class="dash-bar-track"><div class="dash-bar-fill" style="width:${pct}%;background:${accent};"></div></div>
+      </div>`;
+    });
+  }
+  return `
+    <div class="dash-widget hud-corners">
+      <div class="dash-widget-head"><div class="dash-widget-title">📊 KPIペース</div>
+        <button class="icon-btn" onclick="app_openApp('kpi')" title="開く">→</button></div>
+      ${rows}
+    </div>`;
+}
+
+function renderClarityTasksWidget(){
+  const open = tasks.filter(t=>!t.done);
+  let rows = '';
+  if(open.length===0){
+    rows = `<div class="empty-small" style="padding:14px 0;">未完了タスクなし</div>`;
+  } else {
+    open.slice(0,6).forEach(t=>{
+      rows += `<div class="dash-mini-row"><span class="dash-mini-name">☐ ${escapeHtml(t.text)}</span></div>`;
+    });
+  }
+  return `
+    <div class="dash-widget hud-corners">
+      <div class="dash-widget-head"><div class="dash-widget-title">🧠 Clarity ・ 今日のタスク</div>
+        <button class="icon-btn" onclick="app_openApp('clarity','tasks')" title="開く">→</button></div>
+      ${rows}
+    </div>`;
+}
+
+function renderMinutesWidget(){
+  let rows = '';
+  if(minutesList.length===0){
+    rows = `<div class="empty-small" style="padding:14px 0;">まだ議事録がありません</div>`;
+  } else {
+    minutesList.slice(0,4).forEach(mm=>{
+      const d = new Date(mm.created_at);
+      const dateStr = `${d.getMonth()+1}/${d.getDate()}`;
+      const snippet = mm.content.slice(0,28).replace(/\n/g,' ');
+      rows += `<div class="dash-mini-row"><span class="dash-mini-name">${escapeHtml(snippet)}…</span><span class="dash-mini-val">${dateStr}</span></div>`;
+    });
+  }
+  return `
+    <div class="dash-widget hud-corners">
+      <div class="dash-widget-head"><div class="dash-widget-title">📝 議事録</div>
+        <button class="icon-btn" onclick="app_openApp('minutes')" title="開く">→</button></div>
+      ${rows}
+    </div>`;
+}
+
+function renderEducationWidget(){
+  const today = todayISO();
+  const upcoming = educationSchedule.filter(s => (s.date||'') >= today).sort((a,b)=> (a.date||'').localeCompare(b.date||''));
+  let rows = '';
+  if(upcoming.length===0){
+    rows = `<div class="empty-small" style="padding:14px 0;">予定はありません</div>`;
+  } else {
+    upcoming.slice(0,5).forEach(s=>{
+      const isToday = s.date===today;
+      rows += `<div class="dash-mini-row"><span class="dash-mini-name">${escapeHtml(s.trainee||'')} ・ ${escapeHtml(s.theme||'')}</span><span class="dash-mini-val" style="${isToday?'color:var(--k0);':''}">${isToday?'本日':s.date}</span></div>`;
+    });
+  }
+  return `
+    <div class="dash-widget hud-corners">
+      <div class="dash-widget-head"><div class="dash-widget-title">🎓 教育の共有 ・ 次の予定</div>
+        <button class="icon-btn" onclick="app_openApp('education','schedule')" title="開く">→</button></div>
+      ${rows}
+    </div>`;
+}
+
+
 
 /* ---------------- KPI ---------------- */
 function achievedFor(kpiId){ return kpiEntries.filter(e=>e.kpi_id===kpiId).reduce((s,e)=>s+e.count,0); }
@@ -1069,7 +1190,14 @@ function startVoice(targetId){
 
 /* ---------------- Navigation ---------------- */
 function goHub(){ currentView='hub'; render(); }
-function openApp(view, tab){ currentView=view; if(tab) clarityTab=tab; render(); }
+function openApp(view, tab){
+  currentView=view;
+  if(tab){
+    if(view==='clarity') clarityTab=tab;
+    else if(view==='education') educationSubTab=tab;
+  }
+  render();
+}
 function switchClarityTab(t){ clarityTab=t; render(); }
 
 /* ---------------- expose to window (since module scripts are not global by default) ---------------- */
