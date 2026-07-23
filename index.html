@@ -246,11 +246,7 @@
 <div class="wrap" id="app"></div>
 
 <script type="module">
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-
-const SUPABASE_URL = 'https://jqzmsjdrvyqgnkctdrri.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Impxem1zamRydnlxZ25rY3RkcnJpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE4NTYzNjAsImV4cCI6MjA5NzQzMjM2MH0.OSmwcyJh5qrBdm9XzmnScHVg4FQeJ8JbpaP2YKLrD_A';
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const STORAGE_KEY = 'kpi-clarity-local-data-v1';
 
 const REFLECT_QUESTIONS = [
   '今日うまくいったことは?',
@@ -260,11 +256,9 @@ const REFLECT_QUESTIONS = [
 ];
 const PALETTE = ['#38E8FF','#8C7CFF','#7DF9E0','#5CC8FF','#6BFFB0','#FF6FD8'];
 
-let session = null;
-let currentView = 'login'; // login | hub | kpi | clarity
+let currentView = 'hub'; // hub | kpi | clarity
 let clarityTab = 'tasks';  // tasks | memos | reflection | settings
 let editingKpiId = null;
-let loginError = '';
 
 let kpis = [];
 let kpiEntries = []; // {id,kpi_id,date,count}
@@ -276,7 +270,11 @@ let educationList = [];
 let educationSchedule = [];
 let educationSubTab = 'log'; // log | summary | schedule
 
-function todayISO(){ return new Date().toISOString().slice(0,10); }
+function genId(){ return 'id_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,8); }
+function todayISO(){
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
 function nowISO(){ return new Date().toISOString(); }
 function currentMonthKey(){ const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; }
 function daysInMonth(y,m){ return new Date(y,m,0).getDate(); }
@@ -287,64 +285,41 @@ function monthInfo(){
 }
 function escapeHtml(s){ const d=document.createElement('div'); d.textContent=s??''; return d.innerHTML; }
 
-/* ---------------- Auth ---------------- */
-async function init(){
-  const { data } = await supabase.auth.getSession();
-  session = data.session;
-  supabase.auth.onAuthStateChange((_event, s) => { session = s; });
-  if(session){ currentView='hub'; await loadAllData(); }
-  render();
+/* ---------------- Local storage data layer ---------------- */
+function loadLocalState(){
+  let raw = null;
+  try{ raw = localStorage.getItem(STORAGE_KEY); }catch(e){ raw = null; }
+  let parsed = {};
+  try{ parsed = raw ? JSON.parse(raw) : {}; }catch(e){ parsed = {}; }
+  kpis = parsed.kpis || [];
+  kpiEntries = parsed.kpiEntries || [];
+  tasks = parsed.tasks || [];
+  memos = parsed.memos || [];
+  reflections = parsed.reflections || [];
+  minutesList = parsed.minutesList || [];
+  educationList = parsed.educationList || [];
+  educationSchedule = parsed.educationSchedule || [];
 }
-async function doLogin(){
-  const email = document.getElementById('login-email').value.trim();
-  const password = document.getElementById('login-password').value;
-  loginError='';
-  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-  if(error){ loginError = 'ログインできませんでした。メールアドレスとパスワードを確認してください。'; render(); return; }
-  session = data.session;
-  currentView = 'hub';
-  await loadAllData();
-  render();
-}
-async function doLogout(){
-  await supabase.auth.signOut();
-  session = null; currentView='login'; render();
+function saveLocalState(){
+  const payload = { kpis, kpiEntries, tasks, memos, reflections, minutesList, educationList, educationSchedule };
+  try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(payload)); }
+  catch(e){ alert('保存に失敗しました(端末のストレージ容量を確認してください)'); }
 }
 
-/* ---------------- Data loading ---------------- */
-async function loadAllData(){
-  const uid = session.user.id;
-  const [k, ke, t, m, r, mm, es, esc] = await Promise.all([
-    supabase.from('kpis').select('*').eq('user_id', uid).order('created_at'),
-    supabase.from('kpi_entries').select('*').eq('user_id', uid),
-    supabase.from('tasks').select('*').eq('user_id', uid).eq('date', todayISO()).order('created_at'),
-    supabase.from('memos').select('*').eq('user_id', uid).order('time', {ascending:false}),
-    supabase.from('reflections').select('*').eq('user_id', uid).order('date', {ascending:false}),
-    supabase.from('meeting_minutes').select('*').eq('user_id', uid).order('created_at', {ascending:false}),
-    supabase.from('education_shares').select('*').eq('user_id', uid).order('created_at', {ascending:false}),
-    supabase.from('education_schedule').select('*').eq('user_id', uid).order('date', {ascending:true}),
-  ]);
-  kpis = k.data || [];
-  kpiEntries = ke.data || [];
-  tasks = t.data || [];
-  memos = m.data || [];
-  reflections = r.data || [];
-  minutesList = mm.data || [];
-  educationList = es.data || [];
-  educationSchedule = esc.data || [];
+function init(){
+  loadLocalState();
+  render();
 }
 
 /* ---------------- Render root ---------------- */
 function render(){
   const app = document.getElementById('app');
 
-  if(currentView==='login'){ app.innerHTML = renderLogin(); attachLoginEvents(); return; }
-
   const info = monthInfo();
   const headerTitle = currentView==='kpi' ? 'KPIペース' : (currentView==='clarity' ? 'Clarity' : (currentView==='minutes' ? '議事録' : (currentView==='education' ? '教育の共有' : 'プラットフォーム')));
   const headerSub = currentView==='kpi'
     ? `${info.y}.${String(info.m).padStart(2,'0')} 残り${info.remaining}/${info.total}日`
-    : (currentView==='clarity' ? '頭の中を、ここに預ける。' : (currentView==='minutes' ? '文字起こし + 過去の共有文からAIが作成' : (currentView==='education' ? '教育台本 + 文字起こしからAIが作成' : session.user.email)));
+    : (currentView==='clarity' ? '頭の中を、ここに預ける。' : (currentView==='minutes' ? '文字起こし + 過去の共有文からAIが作成' : (currentView==='education' ? '教育台本 + 文字起こしからAIが作成' : 'この端末に保存')));
 
   let html = `
     <div class="topbar">
@@ -357,7 +332,6 @@ function render(){
         <button class="btn btn-ghost" onclick="app_openMemoModal()">📋 メモ出力</button>
         <button class="btn btn-fill" onclick="app_openKpiModal()">＋ KPI追加</button>
       </div>` : ''}
-      <button class="btn btn-ghost" onclick="app_logout()">ログアウト</button>
     </div>
     <div class="app-shell">
       <div class="sidebar">${renderSidebar()}</div>
@@ -411,24 +385,6 @@ function renderSidebar(){
   }).join('');
 }
 
-function renderLogin(){
-  return `
-    <div class="login-wrap">
-      <div class="brand-mark" style="display:flex;"><i></i><i></i><i></i></div>
-      <h1>KPIペース × Clarity</h1>
-      <div class="tagline">頭の中を、ここに預ける。</div>
-      <div class="login-field"><label>メールアドレス</label><input type="email" id="login-email" placeholder="you@example.com"></div>
-      <div class="login-field"><label>パスワード</label><input type="password" id="login-password" placeholder="••••••••"></div>
-      <div class="login-error">${loginError}</div>
-      <button class="btn btn-fill login-submit" onclick="app_login()">ログイン</button>
-    </div>
-  `;
-}
-function attachLoginEvents(){
-  const pw = document.getElementById('login-password');
-  if(pw) pw.addEventListener('keydown', (e)=>{ if(e.key==='Enter') doLogin(); });
-}
-
 function renderDashboard(){
   const info = monthInfo();
   let out = `<div class="dash-grid">`;
@@ -437,7 +393,7 @@ function renderDashboard(){
   out += renderMinutesWidget();
   out += renderEducationWidget();
   out += `</div>`;
-  out += `<div class="footnote">${session.user.email}</div>`;
+  out += `<div class="footnote">データはこの端末に保存されています</div>`;
   return out;
 }
 
@@ -468,7 +424,7 @@ function renderKpiWidget(info){
 }
 
 function renderClarityTasksWidget(){
-  const open = tasks.filter(t=>!t.done);
+  const open = tasks.filter(t=>t.date===todayISO() && !t.done);
   let rows = '';
   if(open.length===0){
     rows = `<div class="empty-small" style="padding:14px 0;">未完了タスクなし</div>`;
@@ -606,17 +562,15 @@ function renderKpiTab(info){
   out += `<div class="footnote">稼働日はカレンダー通りに計算 ・ グレーの目盛りは本日時点の目安ペース</div>`;
   return out;
 }
-async function bump(kpiId, delta){
-  const uid = session.user.id; const d = todayISO();
+function bump(kpiId, delta){
+  const d = todayISO();
   let entry = kpiEntries.find(e=>e.kpi_id===kpiId && e.date===d);
   if(entry){
-    const newCount = Math.max(0, entry.count+delta);
-    const { error } = await supabase.from('kpi_entries').update({count:newCount}).eq('id', entry.id);
-    if(!error) entry.count = newCount;
+    entry.count = Math.max(0, entry.count+delta);
   } else if(delta>0){
-    const { data, error } = await supabase.from('kpi_entries').insert({user_id:uid, kpi_id:kpiId, date:d, count:1}).select().single();
-    if(!error) kpiEntries.push(data);
+    kpiEntries.push({ id: genId(), kpi_id: kpiId, date: d, count: 1 });
   }
+  saveLocalState();
   render();
 }
 function openKpiModal(kpiId){
@@ -638,26 +592,25 @@ function openKpiModal(kpiId){
   document.getElementById('f-name').focus();
 }
 function closeModal(){ const o=document.getElementById('overlay'); if(o) o.remove(); editingKpiId=null; }
-async function saveKpi(){
+function saveKpi(){
   const name = document.getElementById('f-name').value.trim();
   const target = parseInt(document.getElementById('f-target').value,10);
   if(!name || isNaN(target) || target<0){ alert('KPI名と目標件数を正しく入力してください'); return; }
-  const uid = session.user.id;
   if(editingKpiId){
-    const { error } = await supabase.from('kpis').update({name, target}).eq('id', editingKpiId);
-    if(!error){ const k = kpis.find(k=>k.id===editingKpiId); k.name=name; k.target=target; }
+    const k = kpis.find(k=>k.id===editingKpiId);
+    if(k){ k.name=name; k.target=target; }
   } else {
-    const { data, error } = await supabase.from('kpis').insert({user_id:uid, name, target}).select().single();
-    if(!error) kpis.push(data);
+    kpis.push({ id: genId(), name, target, created_at: nowISO() });
   }
+  saveLocalState();
   closeModal(); render();
 }
-async function deleteKpi(){
+function deleteKpi(){
   if(!editingKpiId) return;
   if(!confirm('このKPIを削除しますか?記録した実績データも失われます。')) return;
-  await supabase.from('kpis').delete().eq('id', editingKpiId);
   kpis = kpis.filter(k=>k.id!==editingKpiId);
   kpiEntries = kpiEntries.filter(e=>e.kpi_id!==editingKpiId);
+  saveLocalState();
   closeModal(); render();
 }
 function generateMemoText(){
@@ -704,15 +657,16 @@ async function copyMemo(){
 
 /* ---------------- Clarity: Tasks ---------------- */
 function renderTasksTab(){
+  const todays = tasks.filter(t=>t.date===todayISO());
   let out = `
     <div class="input-row">
       <input type="text" id="task-input" placeholder="タスクを追加(頭にあるものを全部出す)" onkeydown="if(event.key==='Enter')app_addTask()">
       <button class="mic-btn" onclick="app_startVoice('task-input')" title="音声入力">🎤</button>
       <button class="btn btn-fill" onclick="app_addTask()">追加</button>
     </div>`;
-  const open = tasks.filter(t=>!t.done);
-  const done = tasks.filter(t=>t.done);
-  if(tasks.length===0){ out += `<div class="empty-small">今日のタスクはまだありません。</div>`; }
+  const open = todays.filter(t=>!t.done);
+  const done = todays.filter(t=>t.done);
+  if(todays.length===0){ out += `<div class="empty-small">今日のタスクはまだありません。</div>`; }
   open.forEach(t=>{
     out += `<div class="list-item">
       <div class="check" onclick="app_toggleTask('${t.id}')"></div>
@@ -732,21 +686,21 @@ function renderTasksTab(){
   }
   return out;
 }
-async function addTask(){
+function addTask(){
   const input = document.getElementById('task-input');
   const text = input.value.trim(); if(!text) return;
-  const uid = session.user.id;
-  const { data, error } = await supabase.from('tasks').insert({user_id:uid, text, done:false, date:todayISO()}).select().single();
-  if(!error){ tasks.push(data); input.value=''; render(); document.getElementById('task-input').focus(); }
+  tasks.push({ id: genId(), text, done:false, date:todayISO(), created_at: nowISO() });
+  saveLocalState();
+  input.value=''; render(); document.getElementById('task-input').focus();
 }
-async function toggleTask(id){
+function toggleTask(id){
   const t = tasks.find(t=>t.id===id); if(!t) return;
-  const { error } = await supabase.from('tasks').update({done:!t.done}).eq('id', id);
-  if(!error){ t.done = !t.done; render(); }
+  t.done = !t.done;
+  saveLocalState(); render();
 }
-async function deleteTask(id){
-  await supabase.from('tasks').delete().eq('id', id);
-  tasks = tasks.filter(t=>t.id!==id); render();
+function deleteTask(id){
+  tasks = tasks.filter(t=>t.id!==id);
+  saveLocalState(); render();
 }
 
 /* ---------------- Clarity: Memos ---------------- */
@@ -763,16 +717,16 @@ function renderMemosTab(){
   });
   return out;
 }
-async function quickMemo(){
+function quickMemo(){
   const input = document.getElementById('quick-memo-input');
   const text = input.value.trim(); if(!text) return;
-  const uid = session.user.id;
-  const { data, error } = await supabase.from('memos').insert({user_id:uid, text}).select().single();
-  if(!error){ memos.unshift(data); input.value=''; render(); }
+  memos.unshift({ id: genId(), text, time: nowISO() });
+  saveLocalState();
+  input.value=''; render();
 }
-async function deleteMemo(id){
-  await supabase.from('memos').delete().eq('id', id);
-  memos = memos.filter(m=>m.id!==id); render();
+function deleteMemo(id){
+  memos = memos.filter(m=>m.id!==id);
+  saveLocalState(); render();
 }
 
 /* ---------------- Clarity: Reflection ---------------- */
@@ -801,18 +755,16 @@ function renderReflectionTab(){
   }
   return out;
 }
-async function saveReflection(){
+function saveReflection(){
   const t = todayISO();
   const answers = REFLECT_QUESTIONS.map((_,i)=> document.getElementById(`reflect-a-${i}`).value.trim());
-  const uid = session.user.id;
   const existing = reflections.find(r=>r.date===t);
   if(existing){
-    const { error } = await supabase.from('reflections').update({answers, saved_at: nowISO()}).eq('id', existing.id);
-    if(!error){ existing.answers = answers; }
+    existing.answers = answers; existing.saved_at = nowISO();
   } else {
-    const { data, error } = await supabase.from('reflections').insert({user_id:uid, date:t, answers}).select().single();
-    if(!error) reflections.unshift(data);
+    reflections.unshift({ id: genId(), date:t, answers, created_at: nowISO(), saved_at: nowISO() });
   }
+  saveLocalState();
   render();
 }
 
@@ -895,12 +847,12 @@ async function copyMinutesPrompt(){
   msg.textContent = ok ? 'コピーしました。AIチャットに貼り付けてください' : 'コピーできませんでした';
 }
 
-async function saveMinutes(){
+function saveMinutes(){
   const content = document.getElementById('minutes-result').value.trim();
   if(!content){ alert('保存する内容がありません'); return; }
-  const uid = session.user.id;
-  const { data, error } = await supabase.from('meeting_minutes').insert({user_id:uid, content}).select().single();
-  if(!error){ minutesList.unshift(data); render(); }
+  minutesList.unshift({ id: genId(), content, created_at: nowISO() });
+  saveLocalState();
+  render();
 }
 function loadMinutes(id){
   const mm = minutesList.find(m=>m.id===id); if(!mm) return;
@@ -908,9 +860,9 @@ function loadMinutes(id){
   const ta = document.getElementById('minutes-result');
   if(ta) ta.value = mm.content;
 }
-async function deleteMinutes(id){
-  await supabase.from('meeting_minutes').delete().eq('id', id);
-  minutesList = minutesList.filter(m=>m.id!==id); render();
+function deleteMinutes(id){
+  minutesList = minutesList.filter(m=>m.id!==id);
+  saveLocalState(); render();
 }
 
 
@@ -1057,18 +1009,18 @@ function renderEducationScheduleTab(){
   }
   return out;
 }
-async function addSchedule(){
+function addSchedule(){
   const date = document.getElementById('sched-date').value;
   const trainee = document.getElementById('sched-trainee').value.trim();
   const theme = document.getElementById('sched-theme').value.trim();
   if(!date || !trainee){ alert('日付と対象者を入力してください'); return; }
-  const uid = session.user.id;
-  const { data, error } = await supabase.from('education_schedule').insert({user_id:uid, date, trainee, theme}).select().single();
-  if(!error){ educationSchedule.push(data); render(); }
+  educationSchedule.push({ id: genId(), date, trainee, theme });
+  saveLocalState();
+  render();
 }
-async function deleteSchedule(id){
-  await supabase.from('education_schedule').delete().eq('id', id);
-  educationSchedule = educationSchedule.filter(s=>s.id!==id); render();
+function deleteSchedule(id){
+  educationSchedule = educationSchedule.filter(s=>s.id!==id);
+  saveLocalState(); render();
 }
 
 function renderEducationLogTab(){
@@ -1140,15 +1092,15 @@ async function copyEducationPrompt(){
   }
   msg.textContent = ok ? 'コピーしました。AIチャットに貼り付けてください' : 'コピーできませんでした';
 }
-async function saveEducation(){
+function saveEducation(){
   const date = document.getElementById('edu-date').value;
   const instructor = document.getElementById('edu-instructor').value.trim();
   const trainee = document.getElementById('edu-trainee').value.trim();
   const content = document.getElementById('edu-result').value.trim();
   if(!content){ alert('保存する内容がありません'); return; }
-  const uid = session.user.id;
-  const { data, error } = await supabase.from('education_shares').insert({user_id:uid, date, instructor, trainee, content}).select().single();
-  if(!error){ educationList.unshift(data); render(); }
+  educationList.unshift({ id: genId(), date, instructor, trainee, content, created_at: nowISO() });
+  saveLocalState();
+  render();
 }
 function loadEducation(id){
   const e = educationList.find(x=>x.id===id); if(!e) return;
@@ -1159,19 +1111,68 @@ function loadEducation(id){
   if(document.getElementById('edu-instructor')) document.getElementById('edu-instructor').value = e.instructor || '';
   if(document.getElementById('edu-trainee')) document.getElementById('edu-trainee').value = e.trainee || '';
 }
-async function deleteEducation(id){
-  await supabase.from('education_shares').delete().eq('id', id);
-  educationList = educationList.filter(x=>x.id!==id); render();
+function deleteEducation(id){
+  educationList = educationList.filter(x=>x.id!==id);
+  saveLocalState(); render();
 }
 
 /* ---------------- Clarity: Settings (placeholder) ---------------- */
 function renderSettingsTab(){
   return `
-    <div class="settings-row"><div class="settings-label">ログイン中のアカウント</div><div class="settings-value">${escapeHtml(session.user.email)}</div></div>
-    <div class="settings-row"><div class="settings-label">データ保存先</div><div class="settings-value">Supabase (clarity-app)</div></div>
-    <button class="btn btn-ghost" style="width:100%;margin-top:10px;" onclick="app_logout()">ログアウト</button>
-    <div class="footnote">設定タブの詳しい項目は実際の仕様が分かり次第合わせます</div>
+    <div class="settings-row"><div class="settings-label">データ保存先</div><div class="settings-value">この端末のブラウザ内(localStorage)</div></div>
+    <div class="settings-row"><div class="settings-label">他の端末との同期</div><div class="settings-value">エクスポート/インポートで手動同期</div></div>
+    <button class="btn btn-fill" style="width:100%;margin-top:10px;" onclick="app_exportAll()">この端末のデータをエクスポート</button>
+    <input type="file" id="import-file-input" accept="application/json" style="display:none;" onchange="app_importAll(event)">
+    <button class="btn btn-ghost" style="width:100%;margin-top:8px;" onclick="document.getElementById('import-file-input').click()">エクスポートしたデータをインポート</button>
+    <div class="footnote" style="margin-top:8px;margin-bottom:16px;">
+      同期の流れ: ①片方の端末で「エクスポート」→ JSONファイルを保存 ②AirDrop・メール添付・クラウドストレージなどでもう片方の端末に送る ③その端末で「インポート」<br><br>
+      ⚠️ インポートすると、この端末の現在のデータは上書きされます。書き出したJSONには社外秘情報が含まれるため、送信経路・保存先の管理にご注意ください。
+    </div>
+    <button class="btn btn-danger" style="width:100%;" onclick="app_clearAllData()">この端末の全データを削除</button>
   `;
+}
+function importAll(event){
+  const file = event.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = (e)=>{
+    let parsed;
+    try{ parsed = JSON.parse(e.target.result); }
+    catch(err){ alert('ファイルの読み込みに失敗しました(JSON形式ではありません)'); return; }
+    const d = parsed.data || parsed;
+    if(!confirm('インポートすると、この端末の現在のデータは上書きされます。よろしいですか?')) return;
+    kpis = d.kpis || [];
+    kpiEntries = d.kpiEntries || [];
+    tasks = d.tasks || [];
+    memos = d.memos || [];
+    reflections = d.reflections || [];
+    minutesList = d.minutesList || [];
+    educationList = d.educationList || [];
+    educationSchedule = d.educationSchedule || [];
+    saveLocalState();
+    alert('インポートが完了しました');
+    render();
+  };
+  reader.readAsText(file);
+  event.target.value = '';
+}
+function clearAllData(){
+  if(!confirm('本当にこの端末の全データを削除しますか?この操作は取り消せません。')) return;
+  if(!confirm('念のため再確認です。エクスポートは済んでいますか?削除を実行しますか?')) return;
+  kpis=[]; kpiEntries=[]; tasks=[]; memos=[]; reflections=[]; minutesList=[]; educationList=[]; educationSchedule=[];
+  saveLocalState();
+  currentView='hub'; render();
+}
+function exportAll(){
+  const dump = {
+    exported_at: nowISO(),
+    data: { kpis, kpiEntries, tasks, memos, reflections, minutesList, educationList, educationSchedule }
+  };
+  const blob = new Blob([JSON.stringify(dump, null, 2)], { type:'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `backup_${todayISO()}.json`;
+  a.click();
 }
 
 /* ---------------- Voice input ---------------- */
@@ -1201,8 +1202,6 @@ function openApp(view, tab){
 function switchClarityTab(t){ clarityTab=t; render(); }
 
 /* ---------------- expose to window (since module scripts are not global by default) ---------------- */
-window.app_login = doLogin;
-window.app_logout = doLogout;
 window.app_goHub = goHub;
 window.app_openApp = openApp;
 window.app_switchClarityTab = switchClarityTab;
@@ -1231,6 +1230,9 @@ window.app_deleteEducation = deleteEducation;
 window.app_switchEducationSubTab = switchEducationSubTab;
 window.app_addSchedule = addSchedule;
 window.app_deleteSchedule = deleteSchedule;
+window.app_exportAll = exportAll;
+window.app_importAll = importAll;
+window.app_clearAllData = clearAllData;
 
 init();
 
