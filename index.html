@@ -316,10 +316,10 @@ function render(){
   const app = document.getElementById('app');
 
   const info = monthInfo();
-  const headerTitle = currentView==='kpi' ? 'KPIペース' : (currentView==='clarity' ? 'Clarity' : (currentView==='minutes' ? '議事録' : (currentView==='education' ? '教育の共有' : 'プラットフォーム')));
+  const headerTitle = currentView==='kpi' ? 'KPIペース' : (currentView==='clarity' ? 'Clarity' : (currentView==='minutes' ? '議事録' : (currentView==='education' ? '教育の共有' : (currentView==='settings' ? '設定' : 'プラットフォーム'))));
   const headerSub = currentView==='kpi'
     ? `${info.y}.${String(info.m).padStart(2,'0')} 残り${info.remaining}/${info.total}日`
-    : (currentView==='clarity' ? '頭の中を、ここに預ける。' : (currentView==='minutes' ? '文字起こし + 過去の共有文からAIが作成' : (currentView==='education' ? '教育台本 + 文字起こしからAIが作成' : 'この端末に保存')));
+    : (currentView==='clarity' ? '頭の中を、ここに預ける。' : (currentView==='minutes' ? '文字起こし + 過去の共有文からAIが作成' : (currentView==='education' ? '教育台本 + 文字起こしからAIが作成' : (currentView==='settings' ? 'データの保存・同期・削除' : 'この端末に保存'))));
 
   let html = `
     <div class="topbar">
@@ -349,7 +349,6 @@ function render(){
       <button class="clarity-tab ${clarityTab==='tasks'?'active':''}" onclick="app_switchClarityTab('tasks')"><span class="ic">☐</span><span class="lb">タスク</span></button>
       <button class="clarity-tab ${clarityTab==='memos'?'active':''}" onclick="app_switchClarityTab('memos')"><span class="ic">⚡</span><span class="lb">メモ</span></button>
       <button class="clarity-tab ${clarityTab==='reflection'?'active':''}" onclick="app_switchClarityTab('reflection')"><span class="ic">🌙</span><span class="lb">振り返り</span></button>
-      <button class="clarity-tab ${clarityTab==='settings'?'active':''}" onclick="app_switchClarityTab('settings')"><span class="ic">⚙️</span><span class="lb">設定</span></button>
     </div>`;
   }
 
@@ -361,6 +360,7 @@ function render(){
   else if(currentView==='kpi') content.innerHTML = renderKpiTab(info);
   else if(currentView==='minutes') content.innerHTML = renderMinutesTab();
   else if(currentView==='education') content.innerHTML = renderEducationTab();
+  else if(currentView==='settings') content.innerHTML = renderSettingsTab();
   else if(currentView==='clarity'){
     if(clarityTab==='tasks') content.innerHTML = renderTasksTab();
     else if(clarityTab==='memos') content.innerHTML = renderMemosTab();
@@ -376,6 +376,7 @@ function renderSidebar(){
     {view:'clarity', tab:'tasks', icon:'🧠', label:'Clarity'},
     {view:'minutes', tab:null, icon:'📝', label:'議事録'},
     {view:'education', tab:null, icon:'🎓', label:'教育'},
+    {view:'settings', tab:null, icon:'⚙️', label:'設定'},
   ];
   return items.map(it=>{
     const active = currentView===it.view;
