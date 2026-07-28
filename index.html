@@ -268,7 +268,18 @@ let reflections = [];
 let minutesList = [];
 let educationList = [];
 let educationSchedule = [];
-let educationSubTab = 'log'; // log | summary | schedule
+let educationSubTab = 'log'; // log | summary | schedule | library | staff
+let educationLibrary = [];
+let staffList = [];
+let editingLibraryId = null;
+let editingStaffId = null;
+let selectedStaffId = null;
+let aiProposals = [];
+let librarySearch = '';
+let libraryTagFilter = null;
+
+const SKILL_LABELS = ['キャッチ','興味付け','FSV','ヒアリング','比較','見積もり','クロージング','即決力','テスクロ','切り返し','数字理解','コンプライアンス'];
+const SKILL_KEYS   = ['catch','interest','fsv','hearing','comparison','estimate','closing','decisiveness','testclose','rebuttal','numbers','compliance'];
 
 function genId(){ return 'id_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,8); }
 function todayISO(){
@@ -299,9 +310,12 @@ function loadLocalState(){
   minutesList = parsed.minutesList || [];
   educationList = parsed.educationList || [];
   educationSchedule = parsed.educationSchedule || [];
+  educationLibrary = parsed.educationLibrary || [];
+  staffList = parsed.staffList || [];
+  aiProposals = parsed.aiProposals || [];
 }
 function saveLocalState(){
-  const payload = { kpis, kpiEntries, tasks, memos, reflections, minutesList, educationList, educationSchedule };
+  const payload = { kpis, kpiEntries, tasks, memos, reflections, minutesList, educationList, educationSchedule, educationLibrary, staffList, aiProposals };
   try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(payload)); }
   catch(e){ alert('保存に失敗しました(端末のストレージ容量を確認してください)'); }
 }
@@ -941,18 +955,24 @@ ${transcript && transcript.trim() ? transcript : '(なし)'}`;
 
 function renderEducationTab(){
   let out = `
-    <div class="clarity-tabs" style="margin-bottom:16px;">
+    <div class="clarity-tabs" style="margin-bottom:16px;flex-wrap:wrap;">
       <button class="clarity-tab ${educationSubTab==='log'?'active':''}" onclick="app_switchEducationSubTab('log')"><span class="lb">記録</span></button>
       <button class="clarity-tab ${educationSubTab==='summary'?'active':''}" onclick="app_switchEducationSubTab('summary')"><span class="lb">対象者別</span></button>
       <button class="clarity-tab ${educationSubTab==='schedule'?'active':''}" onclick="app_switchEducationSubTab('schedule')"><span class="lb">スケジュール</span></button>
+      <button class="clarity-tab ${educationSubTab==='library'?'active':''}" onclick="app_switchEducationSubTab('library')"><span class="lb">ライブラリ</span></button>
+      <button class="clarity-tab ${educationSubTab==='staff'?'active':''}" onclick="app_switchEducationSubTab('staff')"><span class="lb">スタッフ</span></button>
+      <button class="clarity-tab ${educationSubTab==='proposal'?'active':''}" onclick="app_switchEducationSubTab('proposal')"><span class="lb">AI提案</span></button>
     </div>
   `;
   if(educationSubTab==='summary') out += renderEducationSummaryTab();
   else if(educationSubTab==='schedule') out += renderEducationScheduleTab();
+  else if(educationSubTab==='library') out += renderLibraryTab();
+  else if(educationSubTab==='staff') out += renderStaffTab();
+  else if(educationSubTab==='proposal') out += renderProposalTab();
   else out += renderEducationLogTab();
   return out;
 }
-function switchEducationSubTab(t){ educationSubTab = t; render(); }
+function switchEducationSubTab(t){ educationSubTab = t; selectedStaffId=null; render(); }
 
 function renderEducationSummaryTab(){
   if(educationList.length===0){
@@ -1021,6 +1041,410 @@ function addSchedule(){
 }
 function deleteSchedule(id){
   educationSchedule = educationSchedule.filter(s=>s.id!==id);
+  saveLocalState(); render();
+}
+
+/* ---------------- Education Library (教育ライブラリ) ---------------- */
+function allLibraryTags(){
+  const set = new Set();
+  educationLibrary.forEach(item => (item.tags||[]).forEach(t=>set.add(t)));
+  return [...set].sort();
+}
+function renderLibraryTab(){
+  const tags = allLibraryTags();
+  let filtered = educationLibrary.filter(item=>{
+    if(libraryTagFilter && !(item.tags||[]).includes(libraryTagFilter)) return false;
+    if(librarySearch){
+      const hay = (item.title+' '+item.category+' '+item.purpose+' '+(item.tags||[]).join(' ')).toLowerCase();
+      if(!hay.includes(librarySearch.toLowerCase())) return false;
+    }
+    return true;
+  });
+  filtered = filtered.sort((a,b)=> (b.favorite?1:0)-(a.favorite?1:0));
+
+  let out = `
+    <div class="input-row">
+      <input type="text" id="lib-search" placeholder="教育名・カテゴリ・タグで検索" value="${escapeHtml(librarySearch)}" oninput="app_setLibrarySearch(this.value)">
+      <button class="btn btn-fill" onclick="app_openLibraryModal()">＋ 教育を追加</button>
+    </div>
+  `;
+  if(tags.length>0){
+    out += `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px;">`;
+    out += `<span class="status-pill ${!libraryTagFilter?'status-good':''}" style="cursor:pointer;${libraryTagFilter?'background:var(--surface-2);color:var(--muted);':''}" onclick="app_setLibraryTagFilter(null)">すべて</span>`;
+    tags.forEach(t=>{
+      const active = libraryTagFilter===t;
+      out += `<span class="status-pill" style="cursor:pointer;${active?'background:var(--good-bg);color:var(--good);':'background:var(--surface-2);color:var(--muted);'}" onclick="app_setLibraryTagFilter('${escapeHtml(t)}')">#${escapeHtml(t)}</span>`;
+    });
+    out += `</div>`;
+  }
+
+  if(filtered.length===0){
+    out += `<div class="empty-small">該当する教育がありません。</div>`;
+  } else {
+    out += `<div class="dash-grid">`;
+    filtered.forEach(item=>{
+      out += `<div class="dash-widget hud-corners" style="cursor:pointer;" onclick="app_openLibraryModal('${item.id}')">
+        <div class="dash-widget-head">
+          <div class="dash-widget-title">${item.favorite?'⭐ ':''}${escapeHtml(item.title)}</div>
+          <button class="icon-btn" onclick="event.stopPropagation();app_duplicateLibraryItem('${item.id}')" title="複製">⧉</button>
+        </div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">${escapeHtml(item.category||'')} ・ ${escapeHtml(item.difficulty||'')} ・ ${item.duration?item.duration+'分':''}</div>
+        <div style="font-size:12.5px;color:var(--text);margin-bottom:8px;">${escapeHtml((item.purpose||'').slice(0,60))}${(item.purpose||'').length>60?'…':''}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:5px;">${(item.tags||[]).map(t=>`<span class="status-pill" style="background:var(--surface-2);color:var(--muted);font-size:10px;">#${escapeHtml(t)}</span>`).join('')}</div>
+      </div>`;
+    });
+    out += `</div>`;
+  }
+  return out;
+}
+function setLibrarySearch(v){ librarySearch=v; render(); }
+function setLibraryTagFilter(t){ libraryTagFilter=t; render(); }
+
+function openLibraryModal(id){
+  editingLibraryId = id || null;
+  const it = id ? educationLibrary.find(x=>x.id===id) : null;
+  const overlay = document.createElement('div'); overlay.className='overlay'; overlay.id='overlay';
+  const f = (v)=> v!==undefined && v!==null ? escapeHtml(String(v)) : '';
+  overlay.innerHTML = `
+    <div class="modal hud-corners" style="max-width:480px;max-height:86vh;overflow-y:auto;">
+      <h2>${it?'教育を編集':'教育を追加'}</h2>
+      <div class="field"><label>教育名</label><input id="lf-title" type="text" value="${f(it?.title)}"></div>
+      <div class="metrics-row" style="gap:8px;">
+        <div class="field" style="flex:1;"><label>カテゴリー</label><input id="lf-category" type="text" value="${f(it?.category)}"></div>
+        <div class="field" style="flex:1;"><label>難易度</label><input id="lf-difficulty" type="text" placeholder="初級/中級/上級" value="${f(it?.difficulty)}"></div>
+        <div class="field" style="flex:1;"><label>所要時間(分)</label><input id="lf-duration" type="number" value="${f(it?.duration)}"></div>
+      </div>
+      <div class="field"><label>目的</label><input id="lf-purpose" type="text" value="${f(it?.purpose)}"></div>
+      <div class="field"><label>対象</label><input id="lf-target" type="text" value="${f(it?.target)}"></div>
+      <div class="field"><label>タグ(カンマ区切り)</label><input id="lf-tags" type="text" value="${f((it?.tags||[]).join(', '))}"></div>
+      <div class="field"><label>学習内容</label><textarea id="lf-content" style="width:100%;min-height:70px;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface-2);color:var(--text);font-family:var(--sans);">${f(it?.content)}</textarea></div>
+      <div class="field"><label>台本</label><textarea id="lf-script" style="width:100%;min-height:70px;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface-2);color:var(--text);font-family:var(--sans);">${f(it?.script)}</textarea></div>
+      <div class="field"><label>ロープレ</label><textarea id="lf-roleplay" style="width:100%;min-height:50px;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface-2);color:var(--text);font-family:var(--sans);">${f(it?.roleplay)}</textarea></div>
+      <div class="field"><label>ワーク</label><textarea id="lf-work" style="width:100%;min-height:50px;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface-2);color:var(--text);font-family:var(--sans);">${f(it?.work)}</textarea></div>
+      <div class="field"><label>宿題</label><textarea id="lf-homework" style="width:100%;min-height:50px;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface-2);color:var(--text);font-family:var(--sans);">${f(it?.homework)}</textarea></div>
+      <div class="field"><label>チェック項目</label><textarea id="lf-checklist" style="width:100%;min-height:50px;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface-2);color:var(--text);font-family:var(--sans);">${f(it?.checklist)}</textarea></div>
+      <div class="field"><label><input type="checkbox" id="lf-favorite" ${it?.favorite?'checked':''} style="width:auto;margin-right:6px;">お気に入り</label></div>
+      <div class="modal-actions">
+        ${it?`<button class="btn-danger" onclick="app_deleteLibraryItem()">削除</button>`:''}
+        <button class="btn-secondary" onclick="app_closeModal()">キャンセル</button>
+        <button class="btn-primary" onclick="app_saveLibraryItem()">保存</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+}
+function saveLibraryItem(){
+  const title = document.getElementById('lf-title').value.trim();
+  if(!title){ alert('教育名を入力してください'); return; }
+  const tags = document.getElementById('lf-tags').value.split(',').map(s=>s.trim()).filter(Boolean);
+  const data = {
+    title,
+    category: document.getElementById('lf-category').value.trim(),
+    difficulty: document.getElementById('lf-difficulty').value.trim(),
+    duration: parseInt(document.getElementById('lf-duration').value,10) || null,
+    purpose: document.getElementById('lf-purpose').value.trim(),
+    target: document.getElementById('lf-target').value.trim(),
+    tags,
+    content: document.getElementById('lf-content').value.trim(),
+    script: document.getElementById('lf-script').value.trim(),
+    roleplay: document.getElementById('lf-roleplay').value.trim(),
+    work: document.getElementById('lf-work').value.trim(),
+    homework: document.getElementById('lf-homework').value.trim(),
+    checklist: document.getElementById('lf-checklist').value.trim(),
+    favorite: document.getElementById('lf-favorite').checked,
+    updated_at: nowISO(),
+  };
+  if(editingLibraryId){
+    const idx = educationLibrary.findIndex(x=>x.id===editingLibraryId);
+    if(idx>-1) educationLibrary[idx] = { ...educationLibrary[idx], ...data };
+  } else {
+    educationLibrary.push({ id: genId(), ...data, created_at: nowISO() });
+  }
+  saveLocalState(); closeModal(); render();
+}
+function deleteLibraryItem(){
+  if(!editingLibraryId) return;
+  if(!confirm('この教育をライブラリから削除しますか?')) return;
+  educationLibrary = educationLibrary.filter(x=>x.id!==editingLibraryId);
+  saveLocalState(); closeModal(); render();
+}
+function duplicateLibraryItem(id){
+  const it = educationLibrary.find(x=>x.id===id); if(!it) return;
+  educationLibrary.push({ ...it, id: genId(), title: it.title+'(コピー)', created_at: nowISO(), updated_at: nowISO() });
+  saveLocalState(); render();
+}
+
+/* ---------------- Staff Cards (スタッフカルテ) ---------------- */
+function buildRadarChart(skills){
+  const size=260, cx=size/2, cy=size/2, maxR=88, n=SKILL_KEYS.length, maxVal=10;
+  function pt(i,val){
+    const angle = -Math.PI/2 + i*(2*Math.PI/n);
+    const r = (Math.max(0,Math.min(maxVal,val))/maxVal)*maxR;
+    return [cx+r*Math.cos(angle), cy+r*Math.sin(angle)];
+  }
+  let rings='';
+  [0.25,0.5,0.75,1].forEach(frac=>{
+    const pts=[]; for(let i=0;i<n;i++) pts.push(pt(i,maxVal*frac).join(','));
+    rings += `<polygon points="${pts.join(' ')}" fill="none" stroke="rgba(255,255,255,.08)" stroke-width="1"/>`;
+  });
+  let axes='';
+  for(let i=0;i<n;i++){ const [x,y]=pt(i,maxVal); axes += `<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" stroke="rgba(255,255,255,.08)" stroke-width="1"/>`; }
+  const dataPts=[]; for(let i=0;i<n;i++) dataPts.push(pt(i, skills[SKILL_KEYS[i]]||0).join(','));
+  const dataPoly = `<polygon points="${dataPts.join(' ')}" fill="rgba(56,232,255,.18)" stroke="#38E8FF" stroke-width="2"/>`;
+  let labels='';
+  for(let i=0;i<n;i++){
+    const angle = -Math.PI/2 + i*(2*Math.PI/n);
+    const lx = cx + (maxR+26)*Math.cos(angle), ly = cy + (maxR+26)*Math.sin(angle);
+    labels += `<text x="${lx}" y="${ly}" font-size="9.5" fill="var(--muted)" text-anchor="middle" dominant-baseline="middle">${SKILL_LABELS[i]}</text>`;
+  }
+  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">${rings}${axes}${dataPoly}${labels}</svg>`;
+}
+
+function renderStaffTab(){
+  if(selectedStaffId) return renderStaffDetail(selectedStaffId);
+  let out = `
+    <div class="reflect-save-row"><button class="btn btn-fill" onclick="app_openStaffModal()">＋ スタッフを追加</button></div>
+  `;
+  if(staffList.length===0){
+    out += `<div class="empty-small">まだスタッフが登録されていません。</div>`;
+  } else {
+    out += `<div class="dash-grid">`;
+    staffList.forEach(s=>{
+      const historyCount = educationList.filter(e=>e.trainee===s.name).length;
+      out += `<div class="dash-widget hud-corners" style="cursor:pointer;" onclick="app_selectStaff('${s.id}')">
+        <div class="dash-widget-head"><div class="dash-widget-title">${escapeHtml(s.name)}</div>
+          <span class="status-pill status-good">Lv.${escapeHtml(s.level||'-')}</span></div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:6px;">${escapeHtml(s.department||'')}</div>
+        <div style="font-size:12px;color:var(--text);">受講済み教育: ${historyCount}件</div>
+      </div>`;
+    });
+    out += `</div>`;
+  }
+  return out;
+}
+function renderStaffDetail(id){
+  const s = staffList.find(x=>x.id===id);
+  if(!s){ selectedStaffId=null; return renderStaffTab(); }
+  const skills = s.skills || {};
+  const history = educationList.filter(e=>e.trainee===s.name).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  let out = `
+    <button class="btn btn-ghost" style="margin-bottom:14px;" onclick="app_backToStaffList()">← スタッフ一覧へ</button>
+    <div class="card hud-corners" style="grid-template-columns:1fr;padding:18px;margin-bottom:14px;">
+      <div class="card-body">
+        <div class="card-head">
+          <div><div class="card-title" style="color:var(--k0);">${escapeHtml(s.name)}</div>
+          <div style="font-size:12px;color:var(--muted);">${escapeHtml(s.department||'')} ・ Lv.${escapeHtml(s.level||'-')}</div></div>
+          <button class="icon-btn" onclick="app_openStaffModal('${s.id}')" title="編集">✎</button>
+        </div>
+        <div style="display:flex;justify-content:center;margin:10px 0;">${buildRadarChart(skills)}</div>
+        <div class="metrics-row">
+          <div class="metric" style="text-align:left;padding:10px 12px;"><div class="lbl" style="margin-bottom:4px;">得意分野</div><div style="font-size:13px;color:var(--text);">${escapeHtml(s.strengths||'—')}</div></div>
+          <div class="metric" style="text-align:left;padding:10px 12px;"><div class="lbl" style="margin-bottom:4px;">苦手分野</div><div style="font-size:13px;color:var(--text);">${escapeHtml(s.weaknesses||'—')}</div></div>
+        </div>
+        ${s.comment? `<div style="margin-top:10px;font-size:13px;"><b style="color:var(--muted);font-size:11px;">店長コメント</b><br>${escapeHtml(s.comment)}</div>`:''}
+        ${s.nextRecommended? `<div style="margin-top:10px;font-size:13px;"><b style="color:var(--muted);font-size:11px;">次回おすすめ教育</b><br>${escapeHtml(s.nextRecommended)}</div>`:''}
+      </div>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:10px;">教育履歴(${history.length}件)</div>
+  `;
+  if(history.length===0){
+    out += `<div class="empty-small">まだ教育記録がありません。</div>`;
+  } else {
+    history.forEach(e=>{
+      out += `<div class="reflect-entry"><div class="reflect-date">${e.date||''} ・ ${escapeHtml(e.instructor||'')}</div>
+        <div class="reflect-content">${escapeHtml(e.content).slice(0,140)}${e.content.length>140?'…':''}</div></div>`;
+    });
+  }
+  return out;
+}
+function selectStaff(id){ selectedStaffId=id; render(); }
+function backToStaffList(){ selectedStaffId=null; render(); }
+
+function openStaffModal(id){
+  editingStaffId = id || null;
+  const s = id ? staffList.find(x=>x.id===id) : null;
+  const skills = (s && s.skills) || {};
+  const overlay = document.createElement('div'); overlay.className='overlay'; overlay.id='overlay';
+  const f = (v)=> v!==undefined && v!==null ? escapeHtml(String(v)) : '';
+  let skillRows = '';
+  SKILL_KEYS.forEach((key,i)=>{
+    const val = skills[key] ?? 5;
+    skillRows += `
+      <div style="margin-bottom:8px;">
+        <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:3px;">
+          <span>${SKILL_LABELS[i]}</span><span id="sf-skill-${key}-val">${val}</span>
+        </div>
+        <input type="range" id="sf-skill-${key}" min="0" max="10" value="${val}" style="width:100%;" oninput="document.getElementById('sf-skill-${key}-val').textContent=this.value">
+      </div>`;
+  });
+  overlay.innerHTML = `
+    <div class="modal hud-corners" style="max-width:480px;max-height:86vh;overflow-y:auto;">
+      <h2>${s?'スタッフを編集':'スタッフを追加'}</h2>
+      <div class="field"><label>氏名</label><input id="sf-name" type="text" value="${f(s?.name)}"></div>
+      <div class="metrics-row" style="gap:8px;">
+        <div class="field" style="flex:1;"><label>所属</label><input id="sf-department" type="text" value="${f(s?.department)}"></div>
+        <div class="field" style="flex:1;"><label>現在レベル</label><input id="sf-level" type="text" value="${f(s?.level)}"></div>
+      </div>
+      <div class="field"><label>得意分野</label><input id="sf-strengths" type="text" value="${f(s?.strengths)}"></div>
+      <div class="field"><label>苦手分野</label><input id="sf-weaknesses" type="text" value="${f(s?.weaknesses)}"></div>
+      <div class="field"><label>店長コメント</label><input id="sf-comment" type="text" value="${f(s?.comment)}"></div>
+      <div class="field"><label>次回おすすめ教育</label><input id="sf-next" type="text" value="${f(s?.nextRecommended)}"></div>
+      <div style="font-size:12px;color:var(--muted);margin:14px 0 8px;">営業スキル評価(0〜10)</div>
+      ${skillRows}
+      <div class="modal-actions">
+        ${s?`<button class="btn-danger" onclick="app_deleteStaff()">削除</button>`:''}
+        <button class="btn-secondary" onclick="app_closeModal()">キャンセル</button>
+        <button class="btn-primary" onclick="app_saveStaff()">保存</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+}
+function saveStaff(){
+  const name = document.getElementById('sf-name').value.trim();
+  if(!name){ alert('氏名を入力してください'); return; }
+  const skills = {};
+  SKILL_KEYS.forEach(key=>{ skills[key] = parseInt(document.getElementById(`sf-skill-${key}`).value,10); });
+  const data = {
+    name,
+    department: document.getElementById('sf-department').value.trim(),
+    level: document.getElementById('sf-level').value.trim(),
+    strengths: document.getElementById('sf-strengths').value.trim(),
+    weaknesses: document.getElementById('sf-weaknesses').value.trim(),
+    comment: document.getElementById('sf-comment').value.trim(),
+    nextRecommended: document.getElementById('sf-next').value.trim(),
+    skills,
+  };
+  if(editingStaffId){
+    const idx = staffList.findIndex(x=>x.id===editingStaffId);
+    if(idx>-1) staffList[idx] = { ...staffList[idx], ...data };
+  } else {
+    staffList.push({ id: genId(), ...data, created_at: nowISO() });
+  }
+  saveLocalState(); closeModal(); render();
+}
+function deleteStaff(){
+  if(!editingStaffId) return;
+  if(!confirm('このスタッフを削除しますか?')) return;
+  staffList = staffList.filter(x=>x.id!==editingStaffId);
+  saveLocalState(); closeModal(); render();
+  if(selectedStaffId===editingStaffId) selectedStaffId=null;
+}
+
+/* ---------------- AI Education Proposal (AI教育提案) ---------------- */
+function buildProposalPrompt(staffName, minutesAvail, issue){
+  const staff = staffList.find(s=>s.name===staffName);
+  let staffBlock = '(スタッフ情報なし)';
+  if(staff){
+    const skills = staff.skills || {};
+    const skillLines = SKILL_KEYS.map((k,i)=> `${SKILL_LABELS[i]}: ${skills[k] ?? '-'}/10`).join(' / ');
+    staffBlock = `氏名: ${staff.name}\n所属: ${staff.department||''} ・ レベル: ${staff.level||''}\n得意分野: ${staff.strengths||''}\n苦手分野: ${staff.weaknesses||''}\n営業スキル評価: ${skillLines}`;
+  }
+  const history = educationList.filter(e=>e.trainee===staffName).sort((a,b)=>(b.date||'').localeCompare(a.date||'')).slice(0,3);
+  const historyBlock = history.length>0
+    ? history.map(e=>`- ${e.date}: ${e.content.slice(0,80).replace(/\n/g,' ')}…`).join('\n')
+    : '(過去の教育記録なし)';
+  const libBlock = educationLibrary.length>0
+    ? educationLibrary.map(l=>`- 【${l.title}】カテゴリ:${l.category||''} / 所要時間:${l.duration||'?'}分 / タグ:${(l.tags||[]).join(',')}`).join('\n')
+    : '(ライブラリ未登録)';
+
+  return `あなたは営業教育の専門アドバイザーです。以下の情報をもとに、今回の教育提案をしてください。
+
+【対象スタッフ】
+${staffBlock}
+
+【直近の教育履歴(新しい順・最大3件)】
+${historyBlock}
+
+【教育ライブラリ(登録済みの既存教育一覧)】
+${libBlock}
+
+【今回の条件】
+教育時間: ${minutesAvail}分
+現在の課題: ${issue}
+
+---
+
+上記の情報から、以下を出力してください。既存のライブラリに近いものがあれば優先的に活用し、なければ新規に構成してください。
+
+1. おすすめ教育(タイトル)
+2. おすすめ理由(なぜこの教育が今のこのスタッフに適しているか)
+3. 教育台本(実施時にそのまま話せる内容)
+4. ロープレ(実践練習の内容)
+
+憶測で人物像を補わず、与えられた情報の範囲で提案してください。`;
+}
+
+function renderProposalTab(){
+  const staffOptions = staffList.map(s=>`<option value="${escapeHtml(s.name)}">${escapeHtml(s.name)}</option>`).join('');
+  let out = `
+    <div class="field"><label>対象スタッフ</label>
+      <select id="prop-staff" style="width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--text);font-family:var(--sans);">
+        <option value="">選択してください</option>
+        ${staffOptions}
+      </select>
+    </div>
+    <div class="field"><label>教育時間(分)</label><input id="prop-minutes" type="number" placeholder="例: 30" style="width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--text);font-family:var(--sans);"></div>
+    <div class="reflect-q"><label>現在の課題</label>
+      <textarea id="prop-issue" placeholder="例: クロージングで即決を取れず後日回答になってしまう" style="min-height:90px;"></textarea>
+    </div>
+    <div class="reflect-save-row"><button class="btn btn-fill" onclick="app_copyProposalPrompt()">AIに渡す文章をコピー</button></div>
+    <div class="copy-msg" id="prop-copy-msg" style="margin:-14px 0 20px;"></div>
+    <div class="footnote" style="margin-top:0;margin-bottom:22px;">コピーした文章をAIチャットに貼り付けて、返ってきた提案を下に貼り付けてください</div>
+    <div class="reflect-q"><label>AIからの提案を貼り付け</label>
+      <textarea id="prop-result" placeholder="ここにAIの返答を貼り付け" style="min-height:220px;"></textarea>
+    </div>
+    <div class="input-row"><button class="btn btn-fill" onclick="app_saveProposal()">保存</button></div>
+  `;
+  if(aiProposals.length>0){
+    out += `<div style="font-size:12px;color:var(--muted);margin:20px 0 10px;">保存済みの提案</div>`;
+    aiProposals.forEach(p=>{
+      const d = new Date(p.created_at);
+      out += `<div class="reflect-entry">
+        <div class="reflect-date">${d.getMonth()+1}/${d.getDate()} ・ ${escapeHtml(p.staffName||'')}(${p.minutes||'?'}分)</div>
+        <div class="reflect-content">${escapeHtml(p.content).slice(0,140)}${p.content.length>140?'…':''}</div>
+        <div style="display:flex;gap:8px;margin-top:8px;">
+          <button class="del-btn" onclick="app_loadProposal('${p.id}')" style="color:var(--k0);">開く</button>
+          <button class="del-btn" onclick="app_deleteProposal('${p.id}')">削除</button>
+        </div>
+      </div>`;
+    });
+  }
+  return out;
+}
+async function copyProposalPrompt(){
+  const staffName = document.getElementById('prop-staff').value;
+  const minutesAvail = document.getElementById('prop-minutes').value.trim();
+  const issue = document.getElementById('prop-issue').value.trim();
+  const msg = document.getElementById('prop-copy-msg');
+  if(!staffName || !issue){ alert('対象スタッフと現在の課題を入力してください'); return; }
+  const prompt = buildProposalPrompt(staffName, minutesAvail||'指定なし', issue);
+  let ok=false;
+  try{ if(navigator.clipboard?.writeText){ await navigator.clipboard.writeText(prompt); ok=true; } }catch(e){ ok=false; }
+  if(!ok){
+    const ta = document.createElement('textarea');
+    ta.value = prompt; ta.style.position='fixed'; ta.style.opacity='0';
+    document.body.appendChild(ta); ta.focus(); ta.select();
+    try{ ok = document.execCommand('copy'); }catch(e){ ok=false; }
+    document.body.removeChild(ta);
+  }
+  msg.textContent = ok ? 'コピーしました。AIチャットに貼り付けてください' : 'コピーできませんでした';
+}
+function saveProposal(){
+  const staffName = document.getElementById('prop-staff').value;
+  const minutes = document.getElementById('prop-minutes').value.trim();
+  const content = document.getElementById('prop-result').value.trim();
+  if(!content){ alert('保存する内容がありません'); return; }
+  aiProposals.unshift({ id: genId(), staffName, minutes, content, created_at: nowISO() });
+  saveLocalState(); render();
+}
+function loadProposal(id){
+  const p = aiProposals.find(x=>x.id===id); if(!p) return;
+  currentView='education'; educationSubTab='proposal'; render();
+  const ta = document.getElementById('prop-result'); if(ta) ta.value = p.content;
+  if(document.getElementById('prop-staff')) document.getElementById('prop-staff').value = p.staffName||'';
+  if(document.getElementById('prop-minutes')) document.getElementById('prop-minutes').value = p.minutes||'';
+}
+function deleteProposal(id){
+  aiProposals = aiProposals.filter(p=>p.id!==id);
   saveLocalState(); render();
 }
 
@@ -1150,6 +1574,9 @@ function importAll(event){
     minutesList = d.minutesList || [];
     educationList = d.educationList || [];
     educationSchedule = d.educationSchedule || [];
+    educationLibrary = d.educationLibrary || [];
+    staffList = d.staffList || [];
+    aiProposals = d.aiProposals || [];
     saveLocalState();
     alert('インポートが完了しました');
     render();
@@ -1160,14 +1587,14 @@ function importAll(event){
 function clearAllData(){
   if(!confirm('本当にこの端末の全データを削除しますか?この操作は取り消せません。')) return;
   if(!confirm('念のため再確認です。エクスポートは済んでいますか?削除を実行しますか?')) return;
-  kpis=[]; kpiEntries=[]; tasks=[]; memos=[]; reflections=[]; minutesList=[]; educationList=[]; educationSchedule=[];
+  kpis=[]; kpiEntries=[]; tasks=[]; memos=[]; reflections=[]; minutesList=[]; educationList=[]; educationSchedule=[]; educationLibrary=[]; staffList=[]; aiProposals=[];
   saveLocalState();
   currentView='hub'; render();
 }
 function exportAll(){
   const dump = {
     exported_at: nowISO(),
-    data: { kpis, kpiEntries, tasks, memos, reflections, minutesList, educationList, educationSchedule }
+    data: { kpis, kpiEntries, tasks, memos, reflections, minutesList, educationList, educationSchedule, educationLibrary, staffList, aiProposals }
   };
   const blob = new Blob([JSON.stringify(dump, null, 2)], { type:'application/json' });
   const a = document.createElement('a');
@@ -1234,6 +1661,21 @@ window.app_deleteSchedule = deleteSchedule;
 window.app_exportAll = exportAll;
 window.app_importAll = importAll;
 window.app_clearAllData = clearAllData;
+window.app_setLibrarySearch = setLibrarySearch;
+window.app_setLibraryTagFilter = setLibraryTagFilter;
+window.app_openLibraryModal = openLibraryModal;
+window.app_saveLibraryItem = saveLibraryItem;
+window.app_deleteLibraryItem = deleteLibraryItem;
+window.app_duplicateLibraryItem = duplicateLibraryItem;
+window.app_selectStaff = selectStaff;
+window.app_backToStaffList = backToStaffList;
+window.app_openStaffModal = openStaffModal;
+window.app_saveStaff = saveStaff;
+window.app_deleteStaff = deleteStaff;
+window.app_copyProposalPrompt = copyProposalPrompt;
+window.app_saveProposal = saveProposal;
+window.app_loadProposal = loadProposal;
+window.app_deleteProposal = deleteProposal;
 
 init();
 
