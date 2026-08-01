@@ -499,7 +499,10 @@ function renderEducationWidget(){
 
 
 /* ---------------- KPI ---------------- */
-function achievedFor(kpiId){ return kpiEntries.filter(e=>e.kpi_id===kpiId).reduce((s,e)=>s+e.count,0); }
+function achievedFor(kpiId){
+  const mKey = currentMonthKey();
+  return kpiEntries.filter(e=>e.kpi_id===kpiId && (e.date||'').startsWith(mKey)).reduce((s,e)=>s+e.count,0);
+}
 function todayEntry(kpiId){ return kpiEntries.find(e=>e.kpi_id===kpiId && e.date===todayISO()); }
 function statusFor(achieved, target, remaining, total){
   const elapsed = total-remaining+1; const expected = target*(elapsed/total);
