@@ -44,16 +44,23 @@
     position:sticky;top:22px;
   }
   .sidebar-item{
-    display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 6px;
+    display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 6px;
     border-radius:14px;cursor:pointer;color:var(--muted);border:1px solid transparent;
     background:transparent;transition:all .15s ease;
   }
-  .sidebar-item .ic{font-size:20px;line-height:1;}
+  .sidebar-ring{
+    width:48px;height:48px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+    border:1.5px solid var(--line);background:radial-gradient(circle, rgba(56,232,255,.06), transparent 70%);
+    transition:all .15s ease;
+  }
+  .sidebar-item .ic{font-size:19px;line-height:1;}
   .sidebar-item .lb{font-size:10px;font-weight:600;text-align:center;line-height:1.2;}
-  .sidebar-item:hover{color:var(--text);background:var(--surface-2);}
-  .sidebar-item.active{
-    color:var(--text);border-color:var(--glow);background:var(--surface);
-    box-shadow:0 0 14px rgba(56,232,255,.15), inset 0 0 8px rgba(56,232,255,.08);
+  .sidebar-item:hover .sidebar-ring{border-color:var(--glow);box-shadow:0 0 10px rgba(56,232,255,.2);}
+  .sidebar-item:hover{color:var(--text);}
+  .sidebar-item.active{color:var(--text);}
+  .sidebar-item.active .sidebar-ring{
+    border-color:var(--glow);box-shadow:0 0 16px rgba(56,232,255,.35), inset 0 0 10px rgba(56,232,255,.12);
+    animation:hud-pulse 2.4s ease-in-out infinite;
   }
   .main-area{flex:1;min-width:0;}
   @media (max-width:680px){
@@ -115,6 +122,11 @@
   .brand .sub{font-size:11px;color:var(--muted);font-family:var(--mono);margin-top:2px;letter-spacing:.03em;}
   .back-btn{font-size:18px;color:var(--muted);margin-right:2px;padding:4px 6px 4px 0;background:none;border:none;cursor:pointer;}
   .back-btn:hover{color:var(--glow);text-shadow:0 0 8px var(--glow);}
+  .topbar-right{display:flex;align-items:center;gap:16px;}
+  .clock-block{text-align:right;}
+  .clock-time{font-family:var(--mono);font-size:15px;font-weight:700;color:var(--k0);letter-spacing:.03em;}
+  .clock-status{font-size:10px;color:var(--muted);display:flex;align-items:center;gap:5px;justify-content:flex-end;margin-top:1px;}
+  .status-dot{width:6px;height:6px;border-radius:50%;background:var(--good);box-shadow:0 0 6px var(--good);display:inline-block;animation:hud-pulse 2s ease-in-out infinite;}
   .topbar-btns{display:flex;gap:8px;}
   .btn{border:none;border-radius:6px;padding:9px 15px;font-size:12.5px;font-weight:600;font-family:var(--mono);cursor:pointer;white-space:nowrap;letter-spacing:.03em;}
   .btn-fill{background:linear-gradient(135deg, var(--k0), var(--k3));color:#031014;box-shadow:0 0 14px rgba(56,232,255,.45);}
@@ -320,6 +332,19 @@ function saveLocalState(){
   catch(e){ alert('保存に失敗しました(端末のストレージ容量を確認してください)'); }
 }
 
+let clockInterval = null;
+function startClock(){
+  if(clockInterval) clearInterval(clockInterval);
+  const update = ()=>{
+    const el = document.getElementById('live-clock');
+    if(!el){ clearInterval(clockInterval); clockInterval=null; return; }
+    const d = new Date();
+    el.textContent = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
+  };
+  update();
+  clockInterval = setInterval(update, 1000);
+}
+
 function init(){
   if(localStorage.getItem(LOCK_KEY)){
     currentView = 'locked';
@@ -418,11 +443,17 @@ function render(){
         <div class="brand-mark"><i></i><i></i><i></i></div>
         <div><h1>${headerTitle}</h1><div class="sub">${escapeHtml(headerSub)}</div></div>
       </div>
-      ${currentView==='kpi' ? `
-      <div class="topbar-btns">
-        <button class="btn btn-ghost" onclick="app_openMemoModal()">📋 メモ出力</button>
-        <button class="btn btn-fill" onclick="app_openKpiModal()">＋ KPI追加</button>
-      </div>` : ''}
+      <div class="topbar-right">
+        <div class="clock-block">
+          <div class="clock-time" id="live-clock">--:--:--</div>
+          <div class="clock-status"><span class="status-dot"></span>この端末</div>
+        </div>
+        ${currentView==='kpi' ? `
+        <div class="topbar-btns">
+          <button class="btn btn-ghost" onclick="app_openMemoModal()">📋 メモ出力</button>
+          <button class="btn btn-fill" onclick="app_openKpiModal()">＋ KPI追加</button>
+        </div>` : ''}
+      </div>
     </div>
     <div class="app-shell">
       <div class="sidebar">${renderSidebar()}</div>
@@ -445,6 +476,7 @@ function render(){
 
   html += `<div id="tab-content"></div></div></div>`;
   app.innerHTML = html;
+  startClock();
 
   const content = document.getElementById('tab-content');
   if(currentView==='hub') content.innerHTML = renderDashboard();
@@ -472,7 +504,8 @@ function renderSidebar(){
   return items.map(it=>{
     const active = currentView===it.view;
     return `<div class="sidebar-item ${active?'active':''}" onclick="app_openApp('${it.view}'${it.tab?`,'${it.tab}'`:''})">
-      <span class="ic">${it.icon}</span><span class="lb">${it.label}</span>
+      <div class="sidebar-ring"><span class="ic">${it.icon}</span></div>
+      <span class="lb">${it.label}</span>
     </div>`;
   }).join('');
 }
@@ -516,27 +549,48 @@ function renderKpiWidget(info){
 }
 
 function renderClarityTasksWidget(){
-  const open = tasks.filter(t=>t.date===todayISO() && !t.done);
-  let rows = '';
-  if(open.length===0){
-    rows = `<div class="empty-small" style="padding:14px 0;">未完了タスクなし</div>`;
+  const todays = tasks.filter(t=>t.date===todayISO());
+  const open = todays.filter(t=>!t.done);
+  let body = '';
+  if(todays.length>0 && open.length===0){
+    body = `
+      <div style="display:flex;flex-direction:column;align-items:center;padding:18px 0 6px;">
+        ${buildCompletionRing()}
+        <div style="font-size:13px;font-weight:700;margin-top:14px;">未完了タスクなし</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px;">すべて完了しています</div>
+      </div>`;
+  } else if(open.length===0){
+    body = `<div class="empty-small" style="padding:14px 0;">今日のタスクなし</div>`;
   } else {
     open.slice(0,6).forEach(t=>{
-      rows += `<div class="dash-mini-row"><span class="dash-mini-name">☐ ${escapeHtml(t.text)}</span></div>`;
+      body += `<div class="dash-mini-row"><span class="dash-mini-name">☐ ${escapeHtml(t.text)}</span></div>`;
     });
   }
   return `
     <div class="dash-widget hud-corners">
       <div class="dash-widget-head"><div class="dash-widget-title">🧠 Clarity ・ 今日のタスク</div>
         <button class="icon-btn" onclick="app_openApp('clarity','tasks')" title="開く">→</button></div>
-      ${rows}
+      ${body}
     </div>`;
+}
+function buildCompletionRing(){
+  const size=120, cx=size/2, cy=size/2, r=48, c=2*Math.PI*r;
+  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+    <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="rgba(255,255,255,.06)" stroke-width="6"/>
+    <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="var(--k0)" stroke-width="6" stroke-linecap="round"
+      stroke-dasharray="${c}" stroke-dashoffset="0" transform="rotate(-90 ${cx} ${cy})"/>
+    <text x="${cx}" y="${cy+7}" font-size="26" fill="var(--k0)" text-anchor="middle">✓</text>
+  </svg>`;
 }
 
 function renderMinutesWidget(){
   let rows = '';
   if(minutesList.length===0){
-    rows = `<div class="empty-small" style="padding:14px 0;">まだ議事録がありません</div>`;
+    rows = `
+      <div style="text-align:center;padding:20px 10px 8px;">
+        <div class="empty-small" style="padding:0 0 14px;">まだ議事録がありません<br>新しい議事録を作成してください</div>
+        <button class="btn btn-fill" onclick="app_openApp('minutes')">＋ 新規作成</button>
+      </div>`;
   } else {
     minutesList.slice(0,4).forEach(mm=>{
       const d = new Date(mm.created_at);
