@@ -321,13 +321,90 @@ function saveLocalState(){
 }
 
 function init(){
-  loadLocalState();
+  if(localStorage.getItem(LOCK_KEY)){
+    currentView = 'locked';
+    render();
+  } else {
+    loadLocalState();
+    render();
+  }
+}
+
+/* ---------------- App Lock (Touch ID / 生体認証, WebAuthn) ---------------- */
+const LOCK_KEY = 'applock-credential-id';
+
+function bufToB64(buf){ return btoa(String.fromCharCode(...new Uint8Array(buf))); }
+function b64ToBuf(b64){ const bin=atob(b64); const arr=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i); return arr.buffer; }
+
+function isLockAvailable(){
+  return !!(window.PublicKeyCredential && navigator.credentials);
+}
+async function setupAppLock(){
+  if(!isLockAvailable()){ alert('この端末・ブラウザは生体認証に対応していません'); return; }
+  try{
+    const cred = await navigator.credentials.create({
+      publicKey: {
+        challenge: crypto.getRandomValues(new Uint8Array(32)),
+        rp: { name: 'KPIペース × Clarity' },
+        user: {
+          id: crypto.getRandomValues(new Uint8Array(16)),
+          name: 'local-user',
+          displayName: 'この端末のユーザー'
+        },
+        pubKeyCredParams: [{alg:-7, type:'public-key'}, {alg:-257, type:'public-key'}],
+        authenticatorSelection: { authenticatorAttachment:'platform', userVerification:'required' },
+        timeout: 60000,
+      }
+    });
+    localStorage.setItem(LOCK_KEY, bufToB64(cred.rawId));
+    alert('この端末にロックを設定しました。次回起動時からTouch ID / 生体認証が必要になります。');
+    render();
+  }catch(e){
+    alert('設定をキャンセルしたか、失敗しました');
+  }
+}
+function disableAppLock(){
+  if(!confirm('この端末のロックを解除しますか?')) return;
+  localStorage.removeItem(LOCK_KEY);
   render();
+}
+async function unlockApp(){
+  const credIdB64 = localStorage.getItem(LOCK_KEY);
+  const btn = document.getElementById('unlock-btn');
+  const msg = document.getElementById('unlock-msg');
+  try{
+    await navigator.credentials.get({
+      publicKey: {
+        challenge: crypto.getRandomValues(new Uint8Array(32)),
+        allowCredentials: [{ id: b64ToBuf(credIdB64), type:'public-key' }],
+        userVerification: 'required',
+        timeout: 60000,
+      }
+    });
+    currentView = 'hub';
+    loadLocalState();
+    render();
+  }catch(e){
+    if(msg) msg.textContent = '認証できませんでした。もう一度お試しください。';
+  }
+}
+function renderLockScreen(){
+  return `
+    <div class="login-wrap">
+      <div class="brand-mark" style="display:flex;margin:0 auto 18px;"><i></i><i></i><i></i></div>
+      <h1 style="font-family:var(--display);font-size:20px;margin-bottom:6px;">ロック中</h1>
+      <div class="tagline" style="font-size:12.5px;color:var(--muted);margin-bottom:28px;">Touch ID / 生体認証で開いてください</div>
+      <button id="unlock-btn" class="btn btn-fill" style="width:100%;padding:13px;" onclick="app_unlockApp()">🔓 認証して開く</button>
+      <div class="login-error" id="unlock-msg" style="color:var(--bad);font-size:12.5px;margin-top:10px;"></div>
+    </div>
+  `;
 }
 
 /* ---------------- Render root ---------------- */
 function render(){
   const app = document.getElementById('app');
+
+  if(currentView==='locked'){ app.innerHTML = renderLockScreen(); return; }
 
   const info = monthInfo();
   const headerTitle = currentView==='kpi' ? 'KPIペース' : (currentView==='clarity' ? 'Clarity' : (currentView==='minutes' ? '議事録' : (currentView==='education' ? '教育の共有' : (currentView==='settings' ? '設定' : 'プラットフォーム'))));
@@ -1546,9 +1623,16 @@ function deleteEducation(id){
 
 /* ---------------- Clarity: Settings (placeholder) ---------------- */
 function renderSettingsTab(){
+  const locked = !!localStorage.getItem(LOCK_KEY);
   return `
     <div class="settings-row"><div class="settings-label">データ保存先</div><div class="settings-value">この端末のブラウザ内(localStorage)</div></div>
     <div class="settings-row"><div class="settings-label">他の端末との同期</div><div class="settings-value">エクスポート/インポートで手動同期</div></div>
+    <div class="settings-row"><div class="settings-label">アプリロック(Touch ID / 生体認証)</div><div class="settings-value">${locked?'設定済み':'未設定'}</div></div>
+    ${locked
+      ? `<button class="btn btn-ghost" style="width:100%;margin-bottom:10px;" onclick="app_disableAppLock()">ロックを解除(無効化)</button>`
+      : `<button class="btn btn-fill" style="width:100%;margin-bottom:10px;" onclick="app_setupAppLock()">🔒 この端末にロックを設定</button>`
+    }
+    <div class="footnote" style="margin-top:0;margin-bottom:14px;">端末ごとに個別設定が必要です(Mac・Androidそれぞれで1回ずつ)。生体認証に対応していない場合はボタンが機能しません。</div>
     <button class="btn btn-fill" style="width:100%;margin-top:10px;" onclick="app_exportAll()">この端末のデータをエクスポート</button>
     <input type="file" id="import-file-input" accept="application/json" style="display:none;" onchange="app_importAll(event)">
     <button class="btn btn-ghost" style="width:100%;margin-top:8px;" onclick="document.getElementById('import-file-input').click()">エクスポートしたデータをインポート</button>
@@ -1679,6 +1763,9 @@ window.app_copyProposalPrompt = copyProposalPrompt;
 window.app_saveProposal = saveProposal;
 window.app_loadProposal = loadProposal;
 window.app_deleteProposal = deleteProposal;
+window.app_setupAppLock = setupAppLock;
+window.app_disableAppLock = disableAppLock;
+window.app_unlockApp = unlockApp;
 
 init();
 
