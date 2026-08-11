@@ -715,9 +715,9 @@ function bump(kpiId, delta){
   const d = todayISO();
   let entry = kpiEntries.find(e=>e.kpi_id===kpiId && e.date===d);
   if(entry){
-    entry.count = Math.max(0, entry.count+delta);
-  } else if(delta>0){
-    kpiEntries.push({ id: genId(), kpi_id: kpiId, date: d, count: 1 });
+    entry.count = entry.count + delta;
+  } else {
+    kpiEntries.push({ id: genId(), kpi_id: kpiId, date: d, count: delta });
   }
   saveLocalState();
   render();
