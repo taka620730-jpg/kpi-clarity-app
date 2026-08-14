@@ -463,7 +463,7 @@ function render(){
   if(currentView==='clarity'){
     html += `
     <div class="quick-memo">
-      <input type="text" id="quick-memo-input" placeholder="今すぐメモ..." onkeydown="if(event.key==='Enter')app_quickMemo()">
+      <input type="text" id="quick-memo-input" placeholder="今すぐメモ..." onkeydown="if(event.key==='Enter' && !event.isComposing && event.keyCode!==229)app_quickMemo()">
       <button class="mic-btn" onclick="app_startVoice('quick-memo-input')" title="音声入力">🎤</button>
       <button class="btn btn-fill" onclick="app_quickMemo()">保存</button>
     </div>
@@ -809,7 +809,7 @@ function renderTasksTab(){
   const todays = tasks.filter(t=>t.date===todayISO());
   let out = `
     <div class="input-row">
-      <input type="text" id="task-input" placeholder="タスクを追加(頭にあるものを全部出す)" onkeydown="if(event.key==='Enter')app_addTask()">
+      <input type="text" id="task-input" placeholder="タスクを追加(頭にあるものを全部出す)" onkeydown="if(event.key==='Enter' && !event.isComposing && event.keyCode!==229)app_addTask()">
       <button class="mic-btn" onclick="app_startVoice('task-input')" title="音声入力">🎤</button>
       <button class="btn btn-fill" onclick="app_addTask()">追加</button>
     </div>`;
